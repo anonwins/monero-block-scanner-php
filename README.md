@@ -29,7 +29,7 @@ The library is split into two distinct phases:
 Communicates with a Monero daemon via RPC to retrieve block and transaction data. This is the only part that requires network access.
 
 ```php
-$block = $scanner->get_block_by_height(3408787, 'http://node:18081', '127.0.0.1:9050');
+$block = $scanner->get_block_by_height(1234567, 'http://node:18081', '127.0.0.1:9050');
 ```
 
 ### 2. Transaction Parsing (Offline)
@@ -315,5 +315,6 @@ The `lib/` folder contains files from [monero-integrations/monerophp](https://gi
 ## License
 
 MIT
+
 
 
