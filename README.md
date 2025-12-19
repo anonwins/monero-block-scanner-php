@@ -140,8 +140,8 @@ Returns:
 ```
 
 **HTTP Requests per Block**: Each block requires 1 + ceil(transaction_count / 100) requests:
-- 1 for the block header & tx hashes
-- 1 extra for every 100 transactions
+- 1 request for the block header & tx hashes
+- 1 request for every 100 transactions
 
 (Ex: 80 txs = 2 requests, 140 txs = 3 requests.)
 
@@ -327,5 +327,6 @@ All dependencies live in `lib/`, sourced from [monero-integrations/monerophp](ht
 ## License
 
 MIT
+
 
 
