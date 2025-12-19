@@ -99,22 +99,20 @@ class MoneroScanner
     public function extract_transactions_to_me(array $transactions, string $private_view_key, callable $pubspend_callback): array
     {
         $matching_outputs = [];
-        
         foreach ($transactions as $tx) {
+         
+            // Get required info from the $tx array
             $tx_hash = $tx['hash'] ?? '';
             $tx_data = $tx['data'] ?? null;
-            
-            if (!$tx_data) {
-                continue;
-            }
-            
+            if (!$tx_data || !$tx_hash) continue;
+         
+            // Process the $tx
             $outputs = $this->process_transaction($tx_data, $tx_hash, $private_view_key, $pubspend_callback);
-            
             foreach ($outputs as $output) {
-                $matching_outputs[] = $output;
+                $matching_outputs[] = $output; // Add any reported outputs in the return array
             }
+         
         }
-        
         return $matching_outputs;
     }
 
@@ -129,41 +127,28 @@ class MoneroScanner
      */
     public function process_transaction(object $tx_data, string $tx_hash, string $private_view_key, callable $pubspend_callback): array
     {
-        $matching_outputs = [];
+        if (!isset($tx_data->extra) || !is_array($tx_data->extra)) return [];
         
         // Extract transaction public key from extra field
-        if (!isset($tx_data->extra) || !is_array($tx_data->extra)) {
-            return [];
-        }
-        
         $extra_hex = bin2hex(pack('C*', ...$tx_data->extra));
         $tx_public_key = $this->cryptonote->txpub_from_extra($extra_hex);
-        
-        if (!$tx_public_key) {
-            return [];
-        }
+        if (!$tx_public_key) return [];
         
         // Parse additional tx public keys from extra field (for subaddress outputs)
         $additional_tx_pubkeys = $this->parse_additional_pubkeys($extra_hex);
         
         // Check if transaction has outputs
-        if (!isset($tx_data->vout) || !is_array($tx_data->vout)) {
-            return [];
-        }
+        if (!isset($tx_data->vout) || !is_array($tx_data->vout)) return [];
 
         // Process each output
+        $matching_outputs = [];
         foreach ($tx_data->vout as $output_index => $output) {
+         
             // Get output key and view tag
-            if (!isset($output->target->tagged_key)) {
-                continue;
-            }
-            
+            if (!isset($output->target->tagged_key)) continue;
             $output_key = $output->target->tagged_key->key ?? null;
             $view_tag = $output->target->tagged_key->view_tag ?? null;
-            
-            if (!$output_key || $view_tag === null) {
-                continue;
-            }
+            if (!$output_key || $view_tag === null) continue;
             
             // Determine tx public key for this output
             $tx_pub_key_for_output = $tx_public_key;
@@ -188,36 +173,32 @@ class MoneroScanner
                     $tx_pub_key_for_output = $add_pubkey;
                 }
             }
-            
-            if (!$view_tag_matches) {
-                continue;
-            }
+
+            // Filter out 99.6% of irrelevant outputs: Makes a bloom filter unneeded. Good job monero!
+            if (!$view_tag_matches) continue;
             
             // View tag matched - recover the subaddress public spend key from the output
             $recovered_spend_key = $this->recover_public_spend_key($derivation, $output_index, $output_key);
             
-            // Check if this spend key belongs to our wallet
-            if (!$pubspend_callback($recovered_spend_key)) {
-                continue;
-            }
+            // Ask the callback if this spend key belongs to our wallet
+            if (!$pubspend_callback($recovered_spend_key)) continue;
             
             // This output belongs to us - decrypt the amount
             $encrypted_amount = $tx_data->rct_signatures->ecdhInfo[$output_index]->amount ?? null;
             
             // Skip if there is no amount
-            if (!$encrypted_amount) {
-                continue;
-            }
+            if (!$encrypted_amount) continue;
             
             // Determine amount in XMR & piconero
             $amount_data = $this->decrypt_amount($derivation, $output_index, $encrypted_amount);
 
-            // Make some safety checks to avoid garbage results
-            // You can change this to another amount to allow such huge transactions (Careful of garbage amounts!)
+            // Determine the safe amount
+            //   You can change this global to another amount to allow such huge transactions.
+            //   If your callback is not probabilistic, you can even use PHP_INT_MAX (not recommended).
             $safe_amount = $GLOBALS['MONERO_SCANNER_SAFE_XMR_AMOUNT'] ?? 9999; // In XMR
-            if ($amount_data['xmr'] > $safe_amount) {
-                continue; // Huge amount, skip it (Most probably a false positive)
-            }
+         
+            // Skip if xmr amount is greater than the safe amount (most probably a false positive from a probabilistic callback)
+            if ($amount_data['xmr'] > $safe_amount) continue; // Skip huge amount
 
             // Extract additional transaction metadata
             $tx_version = $tx_data->version ?? null;
@@ -226,10 +207,8 @@ class MoneroScanner
             $output_count = isset($tx_data->vout) ? count($tx_data->vout) : 0;
 
             // Extract RingCT type from rct_signatures
-            $rct_type = null;
-            if (isset($tx_data->rct_signatures) && isset($tx_data->rct_signatures->type)) {
-                $rct_type = $tx_data->rct_signatures->type;
-            }
+            $have_rct_type = (isset($tx_data->rct_signatures) && isset($tx_data->rct_signatures->type));
+            $rct_type = $have_rct_type ? $tx_data->rct_signatures->type : null;
 
             // Calculate fee if possible (simplified: sum outputs - sum inputs for coinbase, or 0 for regular tx)
             $fee = null;
@@ -245,13 +224,13 @@ class MoneroScanner
             }
 
             $matching_outputs[] = [
-                'tx_hash' => $tx_hash,
-                'output_index' => $output_index,
-                'public_spend_key' => $recovered_spend_key,
-                'amount_xmr' => $amount_data['xmr'],
-                'amount_piconero' => $amount_data['piconero'],
-                'tx_public_key' => $tx_public_key,
-                'output_key' => $output_key,
+                'tx_hash' => $tx_hash, // string
+                'output_index' => $output_index, // int
+                'public_spend_key' => $recovered_spend_key, // string 64char
+                'amount_xmr' => $amount_data['xmr'], // numeric
+                'amount_piconero' => $amount_data['piconero'], // int
+                'tx_public_key' => $tx_public_key, // string
+                'output_key' => $output_key, // string
                 // Additional transaction metadata
                 'tx_version' => $tx_version,
                 'unlock_time' => $unlock_time,
@@ -580,4 +559,5 @@ class MoneroScanner
         ];
     }
 }
+
 
