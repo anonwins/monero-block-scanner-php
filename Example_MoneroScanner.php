@@ -9,7 +9,7 @@ $rpc_url = 'http://node.xmr.rocks:18089';
 $socks5_proxy = '127.0.0.1:9050'; // Can be null
 $private_view_key = 'YOUR_PRIVATE_VIEW_KEY_HEX_64_CHARS'; // <-- Replace this
 
-// Define a callback that checks if a public spend key belongs to our wallet
+// Define a callback that checks if a public spend key belongs to your wallet
 // This mimics a bloom filter (or a database lookup): You just need to return true/false
 $is_my_subaddress = function(string $public_spend_key): bool {
     // Minimal example: Array membership check
