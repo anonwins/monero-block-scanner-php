@@ -270,9 +270,14 @@ $matches = $scanner->extract_transactions_to_me(
 **Important:**  
 The scanner never knows or stores your subaddresses. It depends on your callback to determine ownership, so results are only as reliable as the data behind your callback.
 
+1. The **View Tag** is used to pre-filter out 99.6% of irrelevant tx outputs. (99% filtered out)
+2. The **Callback** is called and if it returns true, the process continues:  (+ 0-100% filtered-out)
+3. The **Safe Amount** is used to reject outputs with absurd amounts (since amount decryption fails (+ 90% filtered-out)
+4. The outputs that survived all this filtering are returned.
+
 - If your callback is precise (accurate array/database/lookup), results will be reliable with no false positives.
-- Approximate/probabilistic checks (like bloom filters) will rarely deliver a false match (usually with obviously absurd amounts); you can always re-validate any suspect outputs using your true subaddress set if needed.
-- Returning true indiscriminately will create false matches, but these are minimized by output amount limits (`$GLOBALS['MONERO_SCANNER_SAFE_XMR_AMOUNT']`, default: 9999 XMR), as most ciphertexts cannot be validly decrypted with your keys.
+- Approximate/probabilistic checks (like bloom filters) will **rarely (but not never)** deliver a false positive.
+- Returning always true will result in ~1 false positive per ~100 transactions, before getting further filtered by output amount limit `safe amount` (`$GLOBALS['MONERO_SCANNER_SAFE_XMR_AMOUNT']`, default: 9999 XMR), as most ciphertexts cannot be validly decrypted with your keys.
 
 ## Project Structure
 
@@ -315,5 +320,6 @@ All required libraries are in `lib/`, vendored from [monero-integrations/monerop
 ## License
 
 MIT
+
 
 
