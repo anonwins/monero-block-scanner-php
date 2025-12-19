@@ -39,11 +39,16 @@ All cryptographic operations—view tag checking, key derivation, amount decrypt
 - **Private**: Your view key never leaves your machine
 - **Scalable**: Plug in a bloom filter for O(1) subaddress lookups
 
+> **IMPORTANT:**  
+> The callback you provide to determine if a recovered public spend key belongs to your wallet **MUST** return accurate results. If the callback returns a *false positive* (i.e., it returns `true` for a public spend key that is _not_ actually yours, e.g. due to relying solely on a probabilistic bloom filter), this transaction/output will be reported as valid and a huge (random/incorrect) amount will be shown as "received."  
+>  
+> Therefore, when using a bloom filter for performance, you **must** verify the match again (e.g. by checking a local database, array, or another positive lookup) after the filter. The bloom filter can provide a fast precheck, but do **not** rely on it alone!
+
 ```php
 $matches = $scanner->extract_transactions_to_me(
     $block['transactions'],
     $private_view_key,
-    fn($key) => $bloom_filter->contains($key)  // Your lookup, your rules
+    fn($key) => $bloom_filter->contains($key)  // Your lookup, your rules (see note above!)
 );
 ```
 
@@ -88,6 +93,10 @@ function is_mine(string $pubspend_key): bool {
         'a6a97a0d7c0edde48950a512772d9bfba738a25489f1b2b9b923b9114761ecf0',
         // ... your subaddress public spend keys
     ];
+    // IMPORTANT:
+    // If you use a bloom filter for performance, *do not trust it alone*:
+    // If a false positive occurs, the transaction will be reported as a valid incoming payment with the wrong (huge/garbage) amount.
+    // Always confirm, after the bloom filter, that the key is truly yours (e.g. by array or database lookup).
     return in_array($pubspend_key, $my_keys);
 };
 
@@ -154,6 +163,10 @@ $matches = $scanner->extract_transactions_to_me(
     $callback           // fn(string $pubspend): bool
 );
 ```
+
+> **IMPORTANT:**  
+> If the `$callback` function returns `true` for a public spend key that is not truly yours (false positive), the transaction will be listed as a real incoming payment, but with an incorrect (huge/garbage) amount.  
+> When using a bloom filter, always ensure an additional database or in-memory verification of spend keys. **Do not rely on a bloom filter alone for a definitive decision.**
 
 Returns array of matching outputs:
 ```php
@@ -251,6 +264,8 @@ $matches = $scanner->extract_transactions_to_me(
     fn($key) => in_array($key, $pubspend_keys)
 );
 ```
+> **IMPORTANT:**  
+> When using a bloom filter or similar fast structure, always verify any positive result with a full database or indexed hash lookup. If you don't, false positives will result in corrupted transaction results and bogus amounts being reported.
 
 ## How It Works
 
@@ -259,6 +274,7 @@ $matches = $scanner->extract_transactions_to_me(
 2. **Key Recovery**: For outputs that pass the view tag check, we recover the subaddress public spend key: `D = P - H_s(derivation || index) * G`
 
 3. **Ownership Check**: The recovered key is passed to your callback. If you're monitoring 1000 subaddresses with a bloom filter, this is O(1).
+   - **Warning:** The callback's verdict **must be correct**—false positives (e.g. using only a bloom filter) will result in wrong amounts and phantom transactions. Always confirm positive matches against a canonical source.
 
 4. **Amount Decryption**: For confirmed outputs, we decrypt the RingCT amount using `amount = encrypted_amount XOR H("amount" || scalar)[0:8]`
 
@@ -272,7 +288,7 @@ The callback-based design means you control the lookup complexity:
 | 10,000       | ~10ms        | ~0.001ms     |
 | 1,000,000    | ~1000ms      | ~0.001ms     |
 
-For production systems with many subaddresses, use a bloom filter.
+For production systems with many subaddresses, use a bloom filter—but, **after a bloom filter positive, do a final full check against your real database to avoid false positives**.
 
 ## Project Structure
 
@@ -315,6 +331,4 @@ The `lib/` folder contains files from [monero-integrations/monerophp](https://gi
 ## License
 
 MIT
-
-
 
