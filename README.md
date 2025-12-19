@@ -1,26 +1,27 @@
 # Monero Block Scanner PHP
 
-A PHP library for scanning Monero blocks/transactions, optimized for extracting outputs sent to your subaddresses (including subaddress and RingCT support) in PHP.
+A PHP library for scanning and decrypting Monero blocks/transactions directly in PHP, focusing on efficiently identifying outputs sent to *any* of your subaddresses—even if you have millions. RingCT, subaddress, and view tag support included.
 
 ## Components
 
 ### MoneroScanner
-Scans the Monero blockchain for transactions addressed to specific subaddresses. Handles network RPC and local cryptography.
+Performs direct Monero blockchain scans, locating outputs that belong to a huge set of subaddresses. Handles both RPC data fetching and all cryptographic parsing locally.
 
 ### MoneroKeyDerivation
-Derives wallet keys from mnemonics and generates all required subaddresses.
+Does all wallet key derivation (from your mnemonic) and generates subaddresses.
 
 ## Why This Exists
 
-Existing PHP libraries lacked comprehensive Monero scanning—especially subaddress support, view tags, correct RingCT amount decryption, and a clear separation of online/offline handling. This library exists because:
+Before writing this, I tried hard to find any open-source PHP library that could actually do full block scanning—extract every transaction in a block, reconstruct all outputs, and tell me if any matched my own (potentially massive) list of subaddresses. Ideally, I wanted to just plug in my private view key and filter outputs across the chain *without* needing a Monero wallet RPC or doing O(block_tx_count × address_count) work.
 
-- It supports **subaddresses** (not just legacy/main addresses).
-- **Implements View Tag filtering** for highly efficient scanning.
-- **Decrypts RingCT amounts** fully and accurately.
-- All key operations are done **offline** for privacy and speed.
-- Callback pattern allows scalable and customizable subaddress lookup.
+But as of writing, no library existed that did real block parsing and scalable subaddress membership checking in PHP. I searched everywhere (GitHub, Packagist, etc.)—almost everything relied on Monero’s wallet RPC, not raw blockchain parsing, and nothing handled the modern features (view tags, scalable subaddress lookup, full RingCT amount decryption). This is a gap if you want to do your own auditing, wallet sync, or analytics, especially for large-scale address sets. So I built this to fill that hole.
 
-The key derivation module enables wallet integration from mnemonics.
+- **Scalable to millions of subaddresses**: The callback model allows constant-time membership checks, e.g. via a bloom filter or DB.
+- **Handles modern features**: Subaddresses, view tags for fast skipping, complete RingCT decryption, correct parsing.
+- **Works fully offline**: All sensitive keys are used client-side only. No need to trust wallet RPC.
+- **Customizable and script-friendly**: Use for analytics, auditing, or wallets.
+
+The key derivation module is included for seamless wallet integration from mnemonics.
 
 ## Architecture
 
