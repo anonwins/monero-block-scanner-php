@@ -5,29 +5,25 @@
  * Provides methods to fetch blocks and identify transactions sent to specific subaddresses.
  */
 
-// Required libraries (Some are modified for PHP 8+ compatibility)
+ // Required libraries (Some are modified for PHP 8+ compatibility)
 require_once __DIR__ . '/lib/Keccak.php'; // https://github.com/kornrunner/php-keccak
 require_once __DIR__ . '/lib/ed25519.php'; // https://github.com/monero-integrations/monerophp/blob/master/src/ed25519.php
 require_once __DIR__ . '/lib/base58.php'; // https://github.com/monero-integrations/monerophp/blob/master/src/base58.php
 require_once __DIR__ . '/lib/Varint.php'; // https://github.com/monero-integrations/monerophp/blob/master/src/Varint.php
 require_once __DIR__ . '/lib/Cryptonote.php'; // https://github.com/monero-integrations/monerophp/blob/master/src/Cryptonote.php
 
-use MoneroIntegrations\MoneroPhp\Cryptonote;
-use MoneroIntegrations\MoneroPhp\Varint;
-use MoneroIntegrations\MoneroPhp\ed25519;
-
 class MoneroScanner
 {
-    private Cryptonote $cryptonote;
-    private Varint $varint;
-    private ed25519 $ed25519;
+    private \MoneroIntegrations\MoneroPhp\Cryptonote $cryptonote;
+    private \MoneroIntegrations\MoneroPhp\Varint $varint;
+    private \MoneroIntegrations\MoneroPhp\ed25519 $ed25519;
     private int $batch_size = 100;
 
     public function __construct(string $network = 'mainnet')
     {
-        $this->cryptonote = new Cryptonote($network);
-        $this->varint = new Varint();
-        $this->ed25519 = new ed25519();
+        $this->cryptonote = new \MoneroIntegrations\MoneroPhp\Cryptonote($network);
+        $this->varint = new \MoneroIntegrations\MoneroPhp\Varint();
+        $this->ed25519 = new \MoneroIntegrations\MoneroPhp\ed25519();
     }
 
     /**
@@ -154,7 +150,7 @@ class MoneroScanner
         if (!isset($tx_data->vout) || !is_array($tx_data->vout)) {
             return [];
         }
-        
+
         // Process each output
         foreach ($tx_data->vout as $output_index => $output) {
             // Get output key and view tag
@@ -208,12 +204,21 @@ class MoneroScanner
             // This output belongs to us - decrypt the amount
             $encrypted_amount = $tx_data->rct_signatures->ecdhInfo[$output_index]->amount ?? null;
             
+            // Skip if there is no amount
             if (!$encrypted_amount) {
                 continue;
             }
             
+            // Determine amount in XMR & piconero
             $amount_data = $this->decrypt_amount($derivation, $output_index, $encrypted_amount);
-            
+
+            // Make some safety checks to avoid garbage results
+            // You can change this to another amount to allow such huge transactions (Careful of garbage amounts!)
+            $safe_amount = $GLOBALS['MONERO_SCANNER_SAFE_XMR_AMOUNT'] ?? 9999; // In XMR
+            if ($amount_data['xmr'] > $safe_amount) {
+                continue; // Huge amount, skip it (Most probably a false positive)
+            }
+
             // Extract additional transaction metadata
             $tx_version = $tx_data->version ?? null;
             $unlock_time = $tx_data->unlock_time ?? null;
@@ -474,7 +479,7 @@ class MoneroScanner
     /**
      * Get the underlying Cryptonote instance
      */
-    public function get_cryptonote(): Cryptonote
+    public function get_cryptonote(): \MoneroIntegrations\MoneroPhp\Cryptonote
     {
         return $this->cryptonote;
     }
