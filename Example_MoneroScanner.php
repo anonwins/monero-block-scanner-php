@@ -10,7 +10,7 @@ $socks5_proxy = '127.0.0.1:9050'; // Can be null
 $private_view_key = '740b68ac...3eb108ad'; //   <---- Your wallet's private view key (64 chars)
 
 // Define which blocks to scan
-$block_heights = [3408787]; //                  <---- Replace with real block heights
+$block_heights = [1234567]; //                  <---- Replace with real block heights
 
 // Define a callback that checks if a public spend key belongs to your wallet
 // This mimics a bloom filter (or a database lookup): You just need to return true/false
