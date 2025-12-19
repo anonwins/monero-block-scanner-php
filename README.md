@@ -1,54 +1,56 @@
 # Monero Block Scanner PHP
 
-A PHP library for scanning Monero blocks/transactions and extracting outputs sent to your subaddresses.
+A PHP library for scanning Monero blocks/transactions, optimized for extracting outputs sent to your subaddresses (including subaddress and RingCT support) in PHP.
 
 ## Components
 
 ### MoneroScanner
-Scans the Monero blockchain for transactions sent to specific subaddresses.
+Scans the Monero blockchain for transactions addressed to specific subaddresses. Handles network RPC and local cryptography.
 
 ### MoneroKeyDerivation
-Derives keys from mnemonic phrases and generates subaddresses.
+Derives wallet keys from mnemonics and generates all required subaddresses.
 
 ## Why This Exists
 
-I needed a way to scan the Monero blockchain for incoming transactions to a set of subaddresses. Surprisingly, I couldn't find an existing PHP solution that handled this properly—especially one that:
+Existing PHP libraries lacked comprehensive Monero scanning—especially subaddress support, view tags, correct RingCT amount decryption, and separation of online/offline handling. This library exists because:
 
-- Supports subaddresses (not just the main address)
-- Implements view tags for efficient filtering
-- Decrypts RingCT amounts correctly
-- Works offline after fetching the raw data
+- It supports **subaddresses** (not just legacy/main addresses).
+- **Implements View Tag filtering** for highly efficient scanning.
+- **Decrypts RingCT amounts** fully and accurately.
+- All key operations are done **offline** for privacy and speed.
+- The callback pattern allows scalable, customizable subaddress lookup, with strong safeguards against spurious matches.
 
-So I built one. The key derivation component was added to support complete wallet operations.
+The key derivation module enables wallet integration from mnemonics.
 
 ## Architecture
 
-The library is split into two distinct phases:
+The library follows a two-phase design:
 
 ### 1. Data Fetching (Online)
-Communicates with a Monero daemon via RPC to retrieve block and transaction data. This is the only part that requires network access.
+Fetch blocks and transactions from a Monero daemon via RPC.
 
 ```php
 $block = $scanner->get_block_by_height(1234567, 'http://node:18081', '127.0.0.1:9050');
 ```
 
 ### 2. Transaction Parsing (Offline)
-All cryptographic operations—view tag checking, key derivation, amount decryption—happen locally with no network calls. This makes the parsing phase:
+All cryptographic processing (view tag, key derivation, amount decryption) is performed offline.
+- **Fast**: No network latency during scanning.
+- **Private**: Your view key is local only.
+- **Flexible**: Use an array, database, or bloom filter for subaddress lookups. Just make sure your callback is precise.
 
-- **Fast**: No network latency
-- **Private**: Your view key never leaves your machine
-- **Scalable**: Plug in a bloom filter for O(1) subaddress lookups
-
-> **IMPORTANT:**  
-> The callback you provide to determine if a recovered public spend key belongs to your wallet **MUST** return accurate results. If the callback returns a *false positive* (i.e., it returns `true` for a public spend key that is _not_ actually yours, e.g. due to relying solely on a probabilistic bloom filter), this transaction/output will be reported as valid and a huge (random/incorrect) amount will be shown as "received."  
->  
-> Therefore, when using a bloom filter for performance, you **must** verify the match again (e.g. by checking a local database, array, or another positive lookup) after the filter. The bloom filter can provide a fast precheck, but do **not** rely on it alone!
+> **Note:**  
+> The callback you provide, which determines if a recovered public spend key is yours, must be reliable. If it mistakenly returns `true` for keys you do not own (e.g., due to bloom filter false positives), you may see "phantom" outputs with enormous amounts.  
+>
+> To make this even safer, the library internally imposes a **maximum "safe" amount** (`$MONERO_SCANNER_SAFE_XMR_AMOUNT`, default: 99,999 XMR) per output. Any suspiciously large output exceeding this is automatically ignored, so even if a callback is too permissive, bogus billion-XMR results are filtered out.  
+>
+> For best results, combine fast lookup (e.g., bloom filter) with a full in-memory or DB list for any positives—see `Class_MoneroScanner.php` lines 242–247 for related caution.
 
 ```php
 $matches = $scanner->extract_transactions_to_me(
     $block['transactions'],
     $private_view_key,
-    fn($key) => $bloom_filter->contains($key)  // Your lookup, your rules (see note above!)
+    fn($key) => $bloom_filter->contains($key) // Fast lookup only; always confirm positives in your storage!
 );
 ```
 
@@ -57,7 +59,7 @@ $matches = $scanner->extract_transactions_to_me(
 - PHP 8.0+
 - Extensions: `gmp`, `bcmath`, `curl`
 
-Ubuntu/Debian:
+Ubuntu/Debian install:
 
 ```bash
 sudo apt-get install php-gmp php-bcmath php-curl
@@ -79,43 +81,35 @@ require_once 'Class_MoneroScanner.php';
 
 $scanner = new MoneroScanner('mainnet');
 
-// RPC endpoint (Monero daemon)
+// Specify your Monero daemon RPC endpoint
 $rpc_url = 'http://node.example.com:18081';
 
-// Your private view key (hex, 64 chars)
+// Your private view key (64-char hex)
 $private_view_key = '7c0edde48950a7c0edde48950a3a51277de48950a512777c0edde48950a51277';
 
-// Define how to check if a public spend key belongs to your wallet
+// Define ownership check for subaddress public spend keys
 function is_mine(string $pubspend_key): bool {
     static $my_keys = [
-        // Simple array lookup (or use a bloom filter for large sets)
         'fc1d250d044cfd72e0e782187f88fbfa059d4fc3a6e8a4726e8a4f355be6ed29',
         'a6a97a0d7c0edde48950a512772d9bfba738a25489f1b2b9b923b9114761ecf0',
-        // ... your subaddress public spend keys
+        // ... more keys as needed
     ];
-    // IMPORTANT:
-    // If you use a bloom filter for performance, *do not trust it alone*:
-    // If a false positive occurs, the transaction will be reported as a valid incoming payment with the wrong (huge/garbage) amount.
-    // Always confirm, after the bloom filter, that the key is truly yours (e.g. by array or database lookup).
+    // In production, ensure this check is always thorough!
     return in_array($pubspend_key, $my_keys);
 };
 
-// Fetch block (online)
-$block = $scanner->get_block_by_height(
-    1234567,
-    $rpc_url,
-    '127.0.0.1:9050'  // Optional SOCKS5 proxy
-);
+// Step 1: Fetch block data
+$block = $scanner->get_block_by_height(1234567, $rpc_url, '127.0.0.1:9050');  // optional proxy
 
 if (isset($block['error'])) {
     die("Error: " . $block['error']);
 }
 
-// Parse transactions (offline)
+// Step 2: Offline scan for matching outputs
 $matches = $scanner->extract_transactions_to_me(
     $block['transactions'],
     $private_view_key,
-    'is_mine' // The function that checks if a public spend key belongs to one of your subaddresses
+    'is_mine'
 );
 
 foreach ($matches as $output) {
@@ -148,11 +142,11 @@ Returns:
 ]
 ```
 
-**HTTP Requests per Block**: Each block height requires 1 + ceil(tx_count / 100) HTTP requests to the RPC node:
-- 1 request to fetch block header and transaction hashes
-- 1 additional request per 100 transactions
+**HTTP Requests per Block**: Each block requires 1 + ceil(transaction_count / 100) requests:
+- 1 for the block header & tx hashes
+- 1 extra for every 100 transactions
 
-Example: A block with 80 transactions = 2 requests. With 140 transactions = 3 requests.
+(Ex: 80 txs = 2 requests, 140 txs = 3 requests.)
 
 ### Transaction Extraction
 
@@ -164,40 +158,39 @@ $matches = $scanner->extract_transactions_to_me(
 );
 ```
 
-> **IMPORTANT:**  
-> If the `$callback` function returns `true` for a public spend key that is not truly yours (false positive), the transaction will be listed as a real incoming payment, but with an incorrect (huge/garbage) amount.  
-> When using a bloom filter, always ensure an additional database or in-memory verification of spend keys. **Do not rely on a bloom filter alone for a definitive decision.**
+> **Note:**  
+> If your `$callback` yields `true` for an unrelated key, bogus outputs with blank addresses or huge "amounts" can show up due to false matches. This is why, in addition to a careful callback, the library imposes a large-but-sane max output amount (`$MONERO_SCANNER_SAFE_XMR_AMOUNT`) as a final line of safety (see `Class_MoneroScanner.php` lines 242–247).
 
-Returns array of matching outputs:
+Returns an array like:
 ```php
 [
-    'tx_hash' => '...',           // Transaction hash (64-char hex)
-    'output_index' => 0,          // Index of this output in the transaction
-    'public_spend_key' => '...',  // Recovered subaddress public spend key
-    'amount_xmr' => '0.123456789012',     // Amount in XMR (string for precision)
-    'amount_piconero' => 123456789012,    // Amount in piconero (int)
-    'tx_public_key' => '...',     // Transaction public key
-    'output_key' => '...',        // Output public key
-    // Additional transaction metadata:
-    'tx_version' => 2,            // Transaction version
-    'unlock_time' => 0,           // Unlock time (block height or timestamp)
-    'input_count' => 2,           // Number of inputs
-    'output_count' => 2,          // Number of outputs
-    'rct_type' => 6,              // RingCT type (1=simple, 2=full, 3=bulletproof, 4=bulletproof2, 5=cryptonight_r, 6=clsag)
-    'is_coinbase' => false,       // Whether this is a coinbase (miner reward) transaction
+    'tx_hash' => '...'           // 64-char hex string
+    'output_index' => 0,         // Output index in tx
+    'public_spend_key' => '...', // Subaddress public spend key
+    'amount_xmr' => '0.123456789012',
+    'amount_piconero' => 123456789012,
+    'tx_public_key' => '...',
+    'output_key' => '...',
+    // Additional tx info:
+    'tx_version' => 2,
+    'unlock_time' => 0,
+    'input_count' => 2,
+    'output_count' => 2,
+    'rct_type' => 6,
+    'is_coinbase' => false,
 ]
 ```
 
 ### Helper Methods
 
-All internals are public if you need them:
+All cryptographic methods are public:
 
 ```php
 $scanner->check_view_tag($derivation, $output_index, $view_tag);
 $scanner->recover_public_spend_key($derivation, $output_index, $output_key);
 $scanner->decrypt_amount($derivation, $output_index, $encrypted_amount);
 $scanner->parse_additional_pubkeys($extra_hex);
-$scanner->set_batch_size(100);  // Transactions per RPC call
+$scanner->set_batch_size(100); // For RPC transaction fetch batching
 ```
 
 ## MoneroKeyDerivation API
@@ -209,7 +202,7 @@ require_once 'Class_MoneroKeyDerivation.php';
 
 $key_derivation = new MoneroKeyDerivation();
 
-// Derive keys from 25-word mnemonic
+// Recover wallet keys from your 25-word mnemonic
 $keys = $key_derivation->derive_keys_from_mnemonic($mnemonic);
 
 if (!isset($keys['error'])) {
@@ -223,13 +216,11 @@ if (!isset($keys['error'])) {
 ### Subaddress Generation
 
 ```php
-// Generate specific subaddress
+// Single subaddress
 $subaddr = $key_derivation->generate_subaddress($mnemonic, $major_index, $minor_index);
-
-// Generate main address (account 0, subaddress 0)
+// Main address (account 0, index 0)
 $main = $key_derivation->get_main_address($mnemonic);
-
-// Generate multiple subaddresses
+// Many subaddresses
 $subaddrs = $key_derivation->generate_subaddresses($mnemonic, $account_index, $count);
 ```
 
@@ -243,17 +234,17 @@ Returns:
 ]
 ```
 
-### Integration with MoneroScanner
+### Integration: Fast Scanning
 
 ```php
-// Derive keys and generate subaddresses
+// Derive keys
 $keys = $key_derivation->derive_keys_from_mnemonic($mnemonic);
+// Generate subaddresses (e.g., account 0, 100 first addresses)
 $subaddrs = $key_derivation->generate_subaddresses($mnemonic, 0, 100);
 
-// Extract public spend keys for scanning
 $pubspend_keys = array_column($subaddrs, 'public_spend_key');
 
-// Use with bloom filter for efficient lookups
+// Fast check w/ bloom filter, always fallback to full check for positives
 require_once 'Class_MoneroScanner.php';
 
 $scanner = new MoneroScanner();
@@ -264,59 +255,56 @@ $matches = $scanner->extract_transactions_to_me(
     fn($key) => in_array($key, $pubspend_keys)
 );
 ```
-> **IMPORTANT:**  
-> When using a bloom filter or similar fast structure, always verify any positive result with a full database or indexed hash lookup. If you don't, false positives will result in corrupted transaction results and bogus amounts being reported.
+> **Tip:**  
+> Using a bloom filter? For scale, it’s very fast for negatives, but always double-check any positive match with a true array or DB lookup before treating an output as yours. If in doubt, the built-in safe amount check acts as a strong net against bogus, huge transactions.
 
 ## How It Works
 
-1. **View Tag Filtering**: Each output has a 1-byte view tag. We compute the expected tag using `H("view_tag" || derivation || output_index)` and skip non-matching outputs immediately. This eliminates ~99.6% of outputs without expensive point operations.
-
-2. **Key Recovery**: For outputs that pass the view tag check, we recover the subaddress public spend key: `D = P - H_s(derivation || index) * G`
-
-3. **Ownership Check**: The recovered key is passed to your callback. If you're monitoring 1000 subaddresses with a bloom filter, this is O(1).
-   - **Warning:** The callback's verdict **must be correct**—false positives (e.g. using only a bloom filter) will result in wrong amounts and phantom transactions. Always confirm positive matches against a canonical source.
-
-4. **Amount Decryption**: For confirmed outputs, we decrypt the RingCT amount using `amount = encrypted_amount XOR H("amount" || scalar)[0:8]`
+1. **View Tag Filtering:** Each output is tagged (1-byte) with a value predicted by `H("view_tag" || derivation || output_index)`. Non-matches are immediately skipped—this avoids 99.6% of work.
+2. **Key Recovery:** For candidate outputs, the subaddress public spend key is reconstructed from output commitments and your view key.
+3. **Ownership Check:** The recovered spend key is fed to your callback (array search, bloom filter + fallback, DB, etc).  
+   - A false positive callback leads to a bogus output. However, the safe max-amount filter ensures even misclassified outputs don’t pollute your wallet with giant balances.
+4. **Amount Decryption:** If you own the output, RingCT amount decryption yields the true XMR received.
 
 ## Performance
 
-The callback-based design means you control the lookup complexity:
+Choose your lookup/callback algorithm according to subaddress count:
 
 | Subaddresses | Array Lookup | Bloom Filter |
-|--------------|--------------|--------------|
-| 100          | ~0.1ms       | ~0.001ms     |
-| 10,000       | ~10ms        | ~0.001ms     |
-| 1,000,000    | ~1000ms      | ~0.001ms     |
+|--------------|-------------|-------------|
+| 100          | ~0.1ms      | ~0.001ms    |
+| 10,000       | ~10ms       | ~0.001ms    |
+| 1,000,000    | ~1000ms     | ~0.001ms    |
 
-For production systems with many subaddresses, use a bloom filter—but, **after a bloom filter positive, do a final full check against your real database to avoid false positives**.
+**Tip:** For large sets, use a bloom filter for fast negatives and always confirm positives in a true array/DB. Even if your callback makes mistakes, outputs above ~100,000 XMR will be omitted by default.
 
 ## Project Structure
 
 ```
 monero-scanner/
-├── Class_MoneroScanner.php        # Blockchain scanning class
-├── Class_MoneroKeyDerivation.php  # Key derivation and subaddress generation
-├── Example_MoneroScanner.php      # MoneroScanner usage example
-├── Example_MoneroKeyDerivation.php # MoneroKeyDerivation usage example
+├── Class_MoneroScanner.php        # Blockchain scanning (see extract_transactions_to_me for callback/amount limit safety)
+├── Class_MoneroKeyDerivation.php  # Key derivation, address/subaddress creation
+├── Example_MoneroScanner.php      # MoneroScanner usage
+├── Example_MoneroKeyDerivation.php # MoneroKeyDerivation usage
 ├── README.md
-└── lib/                           # Dependencies from monerophp
+└── lib/                           # PHP dependencies from monerophp
     ├── Cryptonote.php
     ├── ed25519.php
     ├── base58.php
     ├── Keccak.php
     ├── Varint.php
     ├── mnemonic.php
-    └── wordsets/                   # Mnemonic word lists
+    └── wordsets/
         ├── english.ws.php
         ├── spanish.ws.php
-        └── ...
+        └── ... (other language wordlists)
 ```
 
 ## Dependencies
 
 ### Required Libraries
 
-The `lib/` folder contains files from [monero-integrations/monerophp](https://github.com/monero-integrations/monerophp). Each file includes a comment with its source URL if you need to fetch the latest version:
+All dependencies live in `lib/`, sourced from [monero-integrations/monerophp](https://github.com/monero-integrations/monerophp). Source URLs are preserved as code comments:
 
 - [Keccak.php](https://github.com/kornrunner/php-keccak)
 - [ed25519.php](https://github.com/monero-integrations/monerophp/blob/master/src/ed25519.php)
@@ -324,9 +312,9 @@ The `lib/` folder contains files from [monero-integrations/monerophp](https://gi
 - [Varint.php](https://github.com/monero-integrations/monerophp/blob/master/src/Varint.php)
 - [Cryptonote.php](https://github.com/monero-integrations/monerophp/blob/master/src/Cryptonote.php)
 - [mnemonic.php](https://github.com/monero-integrations/monerophp/blob/master/src/mnemonic.php)
-- `wordsets/` - Mnemonic word lists for multiple languages
+- `wordsets/` for multi-language mnemonics
 
-**Note**: `Class_MoneroScanner.php` creates its own instances of `Varint` and `ed25519` to avoid relying on non-public (protected) properties inside the vendored `Cryptonote` implementation.
+**NOTE:** `Class_MoneroScanner.php` constructs its own `Varint` and `ed25519` objects specifically to avoid reliance on protected properties inside the vendored `Cryptonote` code.
 
 ## License
 
