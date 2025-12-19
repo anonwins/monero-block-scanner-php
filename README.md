@@ -39,13 +39,6 @@ All cryptographic processing (view tag, key derivation, amount decryption) is pe
 - **Private**: Your view key is local only.
 - **Flexible**: Use an array, database, or bloom filter for subaddress lookups. Just make sure your callback is precise.
 
-> **Note:**  
-> The callback you provide, which determines if a recovered public spend key is yours, must be reliable. If it mistakenly returns `true` for keys you do not own (e.g., due to bloom filter false positives), you may see "phantom" outputs with enormous amounts.  
->
-> To make this even safer, the library internally imposes a **maximum "safe" amount** (`$MONERO_SCANNER_SAFE_XMR_AMOUNT`, default: 99,999 XMR) per output. Any suspiciously large output exceeding this is automatically ignored, so even if a callback is too permissive, bogus billion-XMR results are filtered out.  
->
-> For best results, combine fast lookup (e.g., bloom filter) with a full in-memory or DB list for any positives—see `Class_MoneroScanner.php` lines 242–247 for related caution.
-
 ```php
 $matches = $scanner->extract_transactions_to_me(
     $block['transactions'],
@@ -53,6 +46,13 @@ $matches = $scanner->extract_transactions_to_me(
     fn($key) => $bloom_filter->contains($key) // Fast lookup only; always confirm positives in your storage!
 );
 ```
+
+> **Note:**  
+> The callback you provide, which determines if a recovered public spend key is yours, must be reliable. If it mistakenly returns `true` for keys you do not own (e.g., due to bloom filter false positives), you may see "phantom" outputs with enormous amounts.  
+>
+> To make this even safer, the library internally imposes a **maximum "safe" amount** (`$MONERO_SCANNER_SAFE_XMR_AMOUNT`, default: 99,999 XMR) per output. Any suspiciously large output exceeding this is automatically ignored, so even if a callback is too permissive, bogus billion-XMR results are filtered out. Generally you can expect ~2 calls to your callback per 100 transactions.
+>
+> For best results, combine fast lookup (e.g., bloom filter) with a full in-memory or DB list for any positives—see `Class_MoneroScanner.php` lines 242–247 for related caution.
 
 ## Requirements
 
@@ -319,4 +319,5 @@ All dependencies live in `lib/`, sourced from [monero-integrations/monerophp](ht
 ## License
 
 MIT
+
 
