@@ -235,18 +235,21 @@ Returns:
 ### Integration: Fast Scanning
 
 ```php
-// Derive keys
+// Derive keys from mnemonic
 $keys = $key_derivation->derive_keys_from_mnemonic($mnemonic);
-// Generate subaddresses (e.g., major index 0, minor index 0-99)
+
+// Generate 100 subaddresses (e.g., major index 0, minor index 0-99)
 $subaddrs = $key_derivation->generate_subaddresses($mnemonic, 0, 0, 100);
 
+// Assume you have saved the public spend keys in a database or hash table etc
 $public_spend_keys = array_column($subaddrs, 'public_spend_key');
 
-// Fast check w/ bloom filter
+// Get the block
 require_once 'Class_MoneroScanner.php';
-
 $scanner = new MoneroScanner();
 $block = $scanner->get_block_by_height($height, $rpc_url);
+
+// Extract relevant transactions
 $matches = $scanner->extract_transactions_to_me(
     $block['transactions'],
     $keys['private_view_key'],
