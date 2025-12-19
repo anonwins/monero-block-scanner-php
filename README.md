@@ -49,7 +49,7 @@ $matches = $scanner->extract_transactions_to_me(
 );
 ```
 
-> **Callback accuracy matters:** The callback should accurately report whether a public spend key is controlled by you (see ["Safety: Callback Reliability and Output Amount Limit"](##safety-callback-reliability-and-output-amount-limit) for guidance). Arrays, hash maps, or database-backed lookups are recommended for maximum correctness and minimal false positives. Probabilistic structures (like bloom filters) are supported but rarely needed due to aggressive pre-filtering.
+> **Callback accuracy matters:** The callback should accurately report whether a public spend key is controlled by you (see ["Safety: Callback Reliability and Output Amount Limit"](#safety-callback-reliability-and-output-amount-limit) for guidance). Arrays, hash maps, or database-backed lookups are recommended for maximum correctness and minimal false positives. Probabilistic structures (like bloom filters) are not really needed, as MoneroScanner already heavily pre-filters outputs by cryptographic properties.
 
 ## Requirements
 
@@ -255,8 +255,6 @@ $matches = $scanner->extract_transactions_to_me(
     }
 );
 ```
-> **Tip:**  
-> Your callback can use an array, hash table, database, or any exact source of your subaddresses. Approximate methods (e.g. bloom filters) are rarely necessary, as MoneroScanner already heavily pre-filters outputs by cryptographic properties.
 
 ## How It Works
 
@@ -272,13 +270,9 @@ $matches = $scanner->extract_transactions_to_me(
 **Important:**  
 The scanner never knows or stores your subaddresses. It depends on your callback to determine ownership, so results are only as reliable as the data behind your callback.
 
-
 - If your callback is precise (accurate array/database/lookup), results will be reliable with no false positives.
 - Approximate/probabilistic checks (like bloom filters) will rarely deliver a false match (usually with obviously absurd amounts); you can always re-validate any suspect outputs using your true subaddress set if needed.
 - Returning true indiscriminately will create false matches, but these are minimized by output amount limits (`$GLOBALS['MONERO_SCANNER_SAFE_XMR_AMOUNT']`, default: 9999 XMR), as most ciphertexts cannot be validly decrypted with your keys.
-
-
-
 
 ## Project Structure
 
@@ -321,4 +315,5 @@ All required libraries are in `lib/`, vendored from [monero-integrations/monerop
 ## License
 
 MIT
+
 
