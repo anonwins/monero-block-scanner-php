@@ -7,29 +7,27 @@ require_once 'Class_MoneroScanner.php';
 // Sample config
 $rpc_url = 'http://node.xmr.rocks:18089';
 $socks5_proxy = '127.0.0.1:9050'; // Can be null
-$private_view_key = 'YOUR_PRIVATE_VIEW_KEY_HEX_64_CHARS'; // <-- Replace this
+$private_view_key = '740b68ac...3eb108ad'; //   <---- Your wallet's private view key (64 chars)
+
+// Define which blocks to scan
+$block_heights = [3408787]; //                  <---- Replace with real block heights
 
 // Define a callback that checks if a public spend key belongs to your wallet
 // This mimics a bloom filter (or a database lookup): You just need to return true/false
-$is_my_subaddress = function(string $public_spend_key): bool {
+function is_my_subaddress(string $public_spend_key): bool {
     // Minimal example: Array membership check
-    $my_keys = [
-        '5a3ab96c...7f610e6', // <-- Subaddress public spend key (64 chars)
-        '0b46e7d1...18e5d2b', // <-- Another subaddress public spend key
+    $my_public_spend_keys = [
+        '5a3ab96c...7f6130e6', //               <---- Subaddress public spend key (64 chars)
+        '0b46e7d1...18e05d2b', //               <---- Another subaddress public spend key
     ];
-    return in_array($public_spend_key, $my_keys, true);
+    return in_array($public_spend_key, $my_public_spend_keys, true);
 };
 
 // Initialize scanner
 $scanner = new MoneroScanner('mainnet');
 
-// Define which blocks to scan
-$block_heights = [3408787]; // <-- Replace with real block heights
-
 echo "=== Monero Block Scanner PHP (Example) ===\n\n";
-
 $all_matches = [];
-
 foreach ($block_heights as $height) {
     echo "Fetching block $height...\n";
     
@@ -43,7 +41,7 @@ foreach ($block_heights as $height) {
     echo "  Transactions: " . $block['tx_count'] . "\n";
     
     // Extract transactions belonging to us
-    $matches = $scanner->extract_transactions_to_me($block['transactions'], $private_view_key, $is_my_subaddress);
+    $matches = $scanner->extract_transactions_to_me($block['transactions'], $private_view_key, 'is_my_subaddress');
 
     // Display block results (brief)
     if (count($matches) > 0) {
