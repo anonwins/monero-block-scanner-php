@@ -44,7 +44,7 @@ All cryptographic processing (view tag, key derivation, amount decryption) is pe
 $matches = $scanner->extract_transactions_to_me(
     $block['transactions'],
     $private_view_key,
-    fn($key) => $bloom_filter->contains($key)
+    function($public_spend_key) => $bloom_filter->contains($public_spend_key)
 );
 ```
 
@@ -151,7 +151,7 @@ Returns:
 $matches = $scanner->extract_transactions_to_me(
     $transactions,      // From block['transactions']
     $private_view_key,  // 64-char hex string
-    $callback           // fn(string $public_spend_key): bool
+    $callback           // function(string $public_spend_key): bool
 );
 ```
 
@@ -249,7 +249,7 @@ $block = $scanner->get_block_by_height($height, $rpc_url);
 $matches = $scanner->extract_transactions_to_me(
     $block['transactions'],
     $keys['private_view_key'],
-    fn($key) => in_array($key, $public_spend_keys)
+    function(string $public_spend_key) => in_array($public_spend_key, $public_spend_keys)
 );
 ```
 > **Tip:**  
@@ -327,3 +327,4 @@ All dependencies live in `lib/`, sourced from [monero-integrations/monerophp](ht
 ## License
 
 MIT
+
