@@ -89,9 +89,9 @@ if (isset($block['error'])) die("Error: " . $block['error']);
 // Define ownership check for subaddress public spend keys
 function is_public_spend_key_mine(string $public_spend_key): bool {
     return in_array($public_spend_key, [
-        'fc1d250d044cfd72e0e782187f88fbfa059d4fc3a6e8a4726e8a4f355be6ed29',
-        'a6a97a0d7c0edde48950a512772d9bfba738a25489f1b2b9b923b9114761ecf0',
-        // ... more keys as needed
+        'fc1d250d...5be6ed29',
+        'a6a97a0d...edde4895',
+        // ... your subaddresses public spend keys here
     ]);
 }
 
@@ -132,7 +132,7 @@ Returns:
 ```php
 [
     'height' => 1234567,
-    'hash' => 'd8eb4805d7ba0678efa4af414c3ba203d29ad8cbd12167b65ff3908b7f39614c',
+    'hash' => 'd8eb45da...b7f3961c',
     'timestamp' => 1702001234,
     'tx_count' => 70,
     'transactions' => [...],  // Array of decoded transactions
@@ -221,8 +221,8 @@ $subaddrs = $key_derivation->generate_subaddresses($mnemonic, $major_index, $min
 Returns:
 ```php
 [
-    'address' => '4ABC...',
-    'public_spend_key' => '...',
+    'address' => '78befa4b...d121e67b',
+    'public_spend_key' => 'af414c3b...a290ad8c',
     'major_index' => 0,
     'minor_index' => 0,
 ]
@@ -327,4 +327,5 @@ All dependencies live in `lib/`, sourced from [monero-integrations/monerophp](ht
 ## License
 
 MIT
+
 
