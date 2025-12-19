@@ -219,7 +219,7 @@ $subaddr = $key_derivation->generate_subaddress($mnemonic, $major_index, $minor_
 // Main address (account 0, index 0)
 $main = $key_derivation->get_main_address($mnemonic);
 // Many subaddresses
-$subaddrs = $key_derivation->generate_subaddresses($mnemonic, $account_index, $count);
+$subaddrs = $key_derivation->generate_subaddresses($mnemonic, $major_index, $minor_index_start, $count);
 ```
 
 Returns:
@@ -237,8 +237,8 @@ Returns:
 ```php
 // Derive keys
 $keys = $key_derivation->derive_keys_from_mnemonic($mnemonic);
-// Generate subaddresses (e.g., account 0, 100 first addresses)
-$subaddrs = $key_derivation->generate_subaddresses($mnemonic, 0, 100);
+// Generate subaddresses (e.g., major index 0, minor index 0-99)
+$subaddrs = $key_derivation->generate_subaddresses($mnemonic, 0, 0, 100);
 
 $public_spend_keys = array_column($subaddrs, 'public_spend_key');
 
