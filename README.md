@@ -50,9 +50,9 @@ $matches = $scanner->extract_transactions_to_me(
 > **Note:**  
 > The callback you provide, which determines if a recovered public spend key is yours, must be reliable. If it mistakenly returns `true` for keys you do not own (e.g., due to bloom filter false positives), you may see "phantom" outputs with enormous amounts.  
 >
-> To make this even safer, the library internally imposes a **maximum "safe" amount** (`$MONERO_SCANNER_SAFE_XMR_AMOUNT`, default: 99,999 XMR) per output. Any suspiciously large output exceeding this is automatically ignored, so even if a callback is too permissive, bogus billion-XMR results are filtered out. Generally you can expect ~2 calls to your callback per 100 transactions.
+> To make this even safer, the library internally imposes a **maximum "safe" amount** (`$GLOBALS['MONERO_SCANNER_SAFE_XMR_AMOUNT']`, default: 9999 XMR) per output. Any suspiciously large output exceeding this is automatically ignored, so even if a callback is too permissive, bogus billion-XMR results are filtered out. This seems to be hugely effective: If our keys fail to decrypt the output correctly the amount is almost always an extremely huge one so we filter on a very reasonable and permissive limit. You could set this even to 999_999 XMR and still get reliable results. BUT! This is still not enough, your callback MUST return accurate true/false otherwise you might get bogus transactions reported.
 >
-> For best results, combine fast lookup (e.g., bloom filter) with a full in-memory or DB list for any positives—see `Class_MoneroScanner.php` lines 242–247 for related caution.
+> For best results, combine fast lookup (e.g., bloom filter) with a full in-memory or DB list for any positives. Generally you can expect ~2 calls to your callback per 100 transactions.
 
 ## Requirements
 
@@ -319,5 +319,6 @@ All dependencies live in `lib/`, sourced from [monero-integrations/monerophp](ht
 ## License
 
 MIT
+
 
 
