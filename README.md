@@ -49,7 +49,7 @@ $matches = $scanner->extract_transactions_to_me(
 );
 ```
 
-> **Callback accuracy matters:** The callback should accurately report whether a public spend key is controlled by you (see ["Safety: Callback Reliability and Output Amount Limit"](#safety-callback-reliability-and-output-amount-limit) for guidance). Arrays, hash maps, or database-backed lookups are recommended for maximum correctness and minimal false positives. Probabilistic structures (like bloom filters) are not really needed, as MoneroScanner already heavily pre-filters outputs by cryptographic properties.
+> **Callback accuracy matters:** The callback should accurately report whether a public spend key is controlled by you. Arrays, hash maps, or database-backed lookups are recommended for maximum correctness and **zero** false positives. Probabilistic structures (like bloom filters) are not really needed, as MoneroScanner already heavily pre-filters outputs by cryptographic properties (see ["Safety: Callback Reliability and Output Amount Limit"](#safety-callback-reliability-and-output-amount-limit) for guidance).
 
 ## Requirements
 
@@ -322,6 +322,7 @@ All required libraries are in `lib/`, vendored from [monero-integrations/monerop
 ## License
 
 MIT
+
 
 
 
