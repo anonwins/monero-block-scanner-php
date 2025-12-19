@@ -2,21 +2,20 @@
 /**
  * Example usage of MoneroScanner class
  */
-
 require_once 'Class_MoneroScanner.php';
 
-    // Minimal config (replace with your values)
-    $rpc_url = 'http://node.xmr.rocks:18089';
-$socks5_proxy = null; // e.g. '127.0.0.1:9050'
-$private_view_key = 'YOUR_PRIVATE_VIEW_KEY_HEX_64_CHARS';
+// Sample config
+$rpc_url = 'http://node.xmr.rocks:18089';
+$socks5_proxy = '127.0.0.1:9050'; // Can be null
+$private_view_key = 'YOUR_PRIVATE_VIEW_KEY_HEX_64_CHARS'; // <-- Replace this
 
 // Define a callback that checks if a public spend key belongs to our wallet
-// This mimics a bloom filter - you just need to return true/false
+// This mimics a bloom filter (or a database lookup): You just need to return true/false
 $is_my_subaddress = function(string $public_spend_key): bool {
-    // Minimal example: array membership check (replace with your keys or a bloom filter)
-    static $my_keys = [
-        'SUBADDRESS_PUBLIC_SPEND_KEY_HEX_64_CHARS', // 64-chars Subaddress Public Spend Key
-        // ...
+    // Minimal example: Array membership check
+    $my_keys = [
+        '5a3ab96c...7f610e6', // <-- Subaddress public spend key (64 chars)
+        '0b46e7d1...18e5d2b', // <-- Another subaddress public spend key
     ];
     return in_array($public_spend_key, $my_keys, true);
 };
@@ -24,8 +23,8 @@ $is_my_subaddress = function(string $public_spend_key): bool {
 // Initialize scanner
 $scanner = new MoneroScanner('mainnet');
 
-    // Block heights to scan (replace with real block heights)
-    $block_heights = [3408787];
+// Define which blocks to scan
+$block_heights = [3408787]; // <-- Replace with real block heights
 
 echo "=== Monero Block Scanner PHP (Example) ===\n\n";
 
@@ -36,22 +35,17 @@ foreach ($block_heights as $height) {
     
     // Fetch the block with all transactions
     $block = $scanner->get_block_by_height($height, $rpc_url, $socks5_proxy);
-    
     if (isset($block['error'])) {
         echo "  ERROR: " . $block['error'] . "\n";
         continue;
     }
-    
     echo "  Hash: " . $block['hash'] . "\n";
     echo "  Transactions: " . $block['tx_count'] . "\n";
     
     // Extract transactions belonging to us
-    $matches = $scanner->extract_transactions_to_me(
-        $block['transactions'],
-        $private_view_key,
-        $is_my_subaddress
-    );
-    
+    $matches = $scanner->extract_transactions_to_me($block['transactions'], $private_view_key, $is_my_subaddress);
+
+    // Display block results (brief)
     if (count($matches) > 0) {
         echo "  Found " . count($matches) . " output(s) to our wallet!\n";
         foreach ($matches as $match) {
@@ -61,16 +55,12 @@ foreach ($block_heights as $height) {
     } else {
         echo "  No matches.\n";
     }
-    
     echo "\n";
 }
 
-// Summary
+// Display final results
 echo "=== RESULTS ===\n\n";
-
-if (count($all_matches) === 0) {
-    echo "No transactions found.\n";
-} else {
+if (count($all_matches) > 0) {
     $total = '0';
     foreach ($all_matches as $idx => $output) {
         echo "Output " . ($idx + 1) . ":\n";
@@ -86,5 +76,6 @@ if (count($all_matches) === 0) {
         $total = bcadd($total, $output['amount_xmr'], 12);
     }
     echo "TOTAL: $total XMR\n";
+} else {
+    echo "No transactions found.\n";
 }
-
