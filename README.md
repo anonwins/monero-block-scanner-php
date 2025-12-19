@@ -8,7 +8,7 @@ A PHP library for scanning and decrypting Monero blocks/transactions directly in
 Performs direct Monero blockchain scans, locating outputs that belong to large sets of subaddresses. Handles both RPC data fetching and all local cryptographic parsing.
 
 ### MoneroKeyDerivation
-Wallet key derivation (from mnemonic) and subaddress generation.
+Wallet key derivation (from mnemonic) and subaddress generation. A wrapper for deriving keys and subaddresses by mnemonic phrase.
 
 ## Why This Exists
 
@@ -322,6 +322,7 @@ All required libraries are in `lib/`, vendored from [monero-integrations/monerop
 ## License
 
 MIT
+
 
 
 
