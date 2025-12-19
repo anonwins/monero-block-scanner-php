@@ -38,7 +38,7 @@ $block = $scanner->get_block_by_height(1234567, 'http://node:18081', '127.0.0.1:
 All cryptographic processing (view tag, key derivation, amount decryption) is performed offline.
 - **Fast**: No network latency during scanning.
 - **Private**: Your view key is local only.
-- **Flexible**: Use an array, database, or bloom filter for subaddress lookups.  
+- **Flexible**: Use an array, database, or bloom filter for subaddress lookups.
 
 ```php
 $matches = $scanner->extract_transactions_to_me(
@@ -259,26 +259,20 @@ $matches = $scanner->extract_transactions_to_me(
 
 1. **View Tag Filtering:** Each output is tagged (1-byte) with a value predicted by `H("view_tag" || derivation || output_index)`. Non-matches are immediately skipped—this avoids 99.6% of work.
 2. **Key Recovery:** For candidate outputs, the subaddress public spend key is reconstructed from output commitments and your view key.
-3. **Ownership Check:** The recovered spend key is fed to your callback (array search, bloom filter, database, etc).
+3. **Ownership Check:** The recovered spend key is passed to your callback (which could be an array search, bloom filter, database lookup, etc).
 4. **Amount Decryption:** If you own the output, RingCT amount decryption yields the true XMR received.
 
 ## Safety: Callback Reliability and Output Amount Limit
 
 ### About False Positives
 
-The accuracy of your scanning results fully depends on your callback function:
+**Important:**  
+The block scanner does **not** know your subaddresses or their public spend keys, and holds no database or internal list of them. Instead, it relies entirely on your callback function to decide if any reconstructed spend key matches one of your subaddresses. Therefore, the accuracy of your scan depends fully on the callback you provide.
 
-- **Accurate Callbacks (array/database lookup):**
-  If your callback implements a precise match against your subaddress set or a wallet database, **your result will not contain any false positives**. Examples: direct in_array lookup, database query, or other accurate set membership functions.
+- If your callback is precise (like checking an array or a database), results will be reliable and contain no false positives.
+- If your callback is probabilistic or approximate (such as a bloom filter), you may get occasional false positives. In such cases, you must validate the scan results against your source of truth (your real subaddress set or wallet database) after the scan.
 
-- **Probabilistic or Non-Precise Callbacks (e.g., bloom filter, heuristics):**
-  If you use a bloom filter or any approximate method in your callback, you may (rarely) get a small number of false positives—outputs which appear to belong to you but actually do not. These typically show unusually large (nonsensical) amounts and the public spend key won't truly be yours. To minimize risk, always perform a final check against your hard list or wallet DB after scanning.
-
-This library also excludes any output with an amount above a configurable maximum (`$GLOBALS['MONERO_SCANNER_SAFE_XMR_AMOUNT']`, default: 9999 XMR), since false positives (in the probabilistic case) tend to report enormous amounts.
-
-**Summary:**  
-- Use an exact database/array callback to ensure fully accurate output.
-- If using an approximate filter for speed in the callback, always double-check candidates on your true subaddress set post-scan.
+To further minimize accidental reporting, the scanner excludes outputs above a configurable safe maximum (`$GLOBALS['MONERO_SCANNER_SAFE_XMR_AMOUNT']`, default: 9999 XMR), as false positives from probabilistic filters may appear with implausibly large amounts because they cannot be decrypted with your keys.
 
 ## Performance
 
