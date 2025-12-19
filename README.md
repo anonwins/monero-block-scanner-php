@@ -266,12 +266,13 @@ $matches = $scanner->extract_transactions_to_me(
 3. **Ownership Check:** The recovered spend key is fed to your callback (array search, bloom filter + fallback, DB, etc).
 4. **Amount Decryption:** If you own the output, RingCT amount decryption yields the true XMR received.
 
-**Safety: Callback Reliability and Output Amount Limit**
+## Safety: Callback Reliability and Output Amount Limit
 
-It is critical that your ownership-check callback (`fn($public_spend_key): bool`) is accurate and only returns `true` for keys you truly own. If it returns `true` for keys you don't own (e.g., due to a bloom filter false positive or overly broad logic), your scan results may include bogus transactions—typically with enormous or empty "amounts" and invalid destinations. 
+It is critical that your ownership-check callback (`fn($public_spend_key): bool`) is accurate and only returns `true` for keys you truly own. If it returns `true` for keys you don't own (e.g., due to a bloom filter false positive or overly broad logic), your scan results may include bogus transactions—typically with enormous amounts and invalid destinations. 
 
-To reduce the risk from such callback mistakes, the library enforces a configurable maximum output amount (`$GLOBALS['MONERO_SCANNER_SAFE_XMR_AMOUNT']`, default: 9999 XMR). Outputs with an amount above this are automatically excluded from results as a final safeguard. However, **do not rely on this limit as your main defense**: always ensure your callback logic is accurate and confirm any matches via reliable methods (array/DB).
-The **safe amount** is extremely useful, since false outputs amounts are typically above 100_000 XMR.
+**To reduce the risk** from such callback mistakes, the library enforces a configurable maximum output amount (`$GLOBALS['MONERO_SCANNER_SAFE_XMR_AMOUNT']`, default: 9999 XMR). Outputs with an amount above this are automatically excluded from results as a final safeguard. However, **do not rely on this limit as your main defense**: always ensure your callback logic is accurate and confirm any matches via reliable methods (array/DB).
+
+> The **safe amount** is extremely useful, since false outputs amounts are typically above 100_000 XMR.
 
 > Even with this output amount filter, you should assume any surprising result is due to an overly-permissive callback, and review your matching process accordingly.
 
