@@ -77,36 +77,32 @@ require_once 'Class_MoneroScanner.php';
 
 $scanner = new MoneroScanner('mainnet');
 
-// Specify your Monero daemon RPC endpoint
+// Specify a Monero daemon RPC endpoint
+// You can find public endpoints at xmr.ditatompel.com/remote-nodes
 $rpc_url = 'http://node.example.com:18081';
+$proxy = '127.0.0.1:9050'; // Optional, recommended. Can be null
 
-// Your private view key (64-char hex)
-$private_view_key = '7c0edde48950a7c0edde48950a3a51277de48950a512777c0edde48950a51277';
+// Step 1: Fetch block data
+$block = $scanner->get_block_by_height(1234567, $rpc_url, $proxy);
+if (isset($block['error'])) die("Error: " . $block['error']);
 
 // Define ownership check for subaddress public spend keys
-function is_mine(string $public_spend_key): bool {
-    static $my_keys = [
+function is_public_spend_key_mine(string $public_spend_key): bool {
+    return in_array($public_spend_key, [
         'fc1d250d044cfd72e0e782187f88fbfa059d4fc3a6e8a4726e8a4f355be6ed29',
         'a6a97a0d7c0edde48950a512772d9bfba738a25489f1b2b9b923b9114761ecf0',
         // ... more keys as needed
-    ];
-    return in_array($public_spend_key, $my_keys);
-};
-
-// Step 1: Fetch block data
-$block = $scanner->get_block_by_height(1234567, $rpc_url, '127.0.0.1:9050');  // optional proxy
-
-if (isset($block['error'])) {
-    die("Error: " . $block['error']);
+    ]);
 }
 
 // Step 2: Offline scan for matching outputs
 $matches = $scanner->extract_transactions_to_me(
     $block['transactions'],
-    $private_view_key,
-    'is_mine'
+    '7c0edd...a51277', // Your private view key (64-char hex)
+    'is_public_spend_key_mine'
 );
 
+// Display results
 foreach ($matches as $output) {
     echo $output['amount_xmr'] . " XMR received\n";
     echo "TX: " . $output['tx_hash'] . "\n";
@@ -257,7 +253,7 @@ $matches = $scanner->extract_transactions_to_me(
 );
 ```
 > **Tip:**  
-> For maximum scanning speed on a large address set, use a bloom filter in your callback—just remember that non-exact filters can require a final validation pass if you want to guard against the possibility of occasional false positives. See [Safety: Callback Reliability and Output Amount Limit](#safety-callback-reliability-and-output-amount-limit) for more detail.
+> For maximum scanning speed on a large address set, use a bloom filter in your callback—just remember that non-exact filters **will** require a final validation pass if you want to guard against the possibility of occasional false positives. See [Safety: Callback Reliability and Output Amount Limit](#safety-callback-reliability-and-output-amount-limit) for more detail.
 
 ## How It Works
 
