@@ -122,6 +122,9 @@ foreach ($matches as $output) {
 > **IMPORTANT NOTICE:**  
 > This library has only been tested with approximately 100 Monero transactions. All extracted results were correct in those tests. **HOWEVER, before using this tool in any production or high-stakes environment, you are strongly advised to thoroughly test it yourself with your own addresses and transaction history.** The code may not cover every possible edge case or unusual Monero transaction construction. Ensuring the accuracy of results for your use case is **your responsibility**. Do not rely on this library without personal verification on a representative dataset.
 
+> **Feedback Wanted!**  
+> This project is fresh and experimental—I'm the only person who has tried it so far, right after building it and publishing it to GitHub. I would really appreciate any bug reports, suggestions, or ideas about the code, docs, or features. If you run into issues, edge cases, or simply have thoughts to share, please open an issue or pull request—community feedback at this early stage is extremely helpful!
+
 ## API Reference
 
 ### Block Fetching
