@@ -48,11 +48,11 @@ $matches = $scanner->extract_transactions_to_me(
 ```
 
 > **Note:**  
-> The callback you provide, which determines if a recovered public spend key is yours, must be reliable. If it mistakenly returns `true` for keys you do not own (e.g., due to bloom filter false positives), you may see "phantom" outputs with enormous amounts.  
+> The callback you provide, which determines if a recovered public spend key is yours, must be reliable and accurate. If your callback returns `true` for keys not belonging to you (for example, from a bloom filter false positive), invalid outputs may appear in your results. For more, see [Safety: Callback Reliability and Output Amount Limit](#safety-callback-reliability-and-output-amount-limit).
 >
-> To make this even safer, the library internally imposes a **maximum "safe" amount** (`$GLOBALS['MONERO_SCANNER_SAFE_XMR_AMOUNT']`, default: 9999 XMR) per output. Any suspiciously large output exceeding this is automatically ignored, so even if a callback is too permissive, bogus billion-XMR results are filtered out. This seems to be hugely effective: If our keys fail to decrypt the output correctly the amount is almost always an extremely huge one so we filter on a very reasonable and permissive limit. You could set this even to 999_999 XMR and still get reliable results. BUT! This is still not enough, your callback MUST return accurate true/false otherwise you might get bogus transactions reported.
->
-> For best results, combine fast lookup (e.g., bloom filter) with a full in-memory or DB list for any positives. Generally you can expect ~2 calls to your callback per 100 transactions.
+> The library does impose a configurable "safe" maximum amount per output as a last line of defense ([details here](#safety-callback-reliability-and-output-amount-limit)), but you should always ensure your callback is correct and confirm matches.
+
+For best results, combine fast lookup (e.g., bloom filter) with a full in-memory or DB list for any positives. Generally you can expect ~2 calls to your callback per 100 transactions.
 
 ## Requirements
 
@@ -88,14 +88,14 @@ $rpc_url = 'http://node.example.com:18081';
 $private_view_key = '7c0edde48950a7c0edde48950a3a51277de48950a512777c0edde48950a51277';
 
 // Define ownership check for subaddress public spend keys
-function is_mine(string $pubspend_key): bool {
+function is_mine(string $public_spend_key): bool {
     static $my_keys = [
         'fc1d250d044cfd72e0e782187f88fbfa059d4fc3a6e8a4726e8a4f355be6ed29',
         'a6a97a0d7c0edde48950a512772d9bfba738a25489f1b2b9b923b9114761ecf0',
         // ... more keys as needed
     ];
     // In production, ensure this check is always thorough!
-    return in_array($pubspend_key, $my_keys);
+    return in_array($public_spend_key, $my_keys);
 };
 
 // Step 1: Fetch block data
@@ -154,12 +154,13 @@ Returns:
 $matches = $scanner->extract_transactions_to_me(
     $transactions,      // From block['transactions']
     $private_view_key,  // 64-char hex string
-    $callback           // fn(string $pubspend): bool
+    $callback           // fn(string $public_spend_key): bool
 );
 ```
 
 > **Note:**  
-> If your `$callback` yields `true` for an unrelated key, bogus outputs with blank addresses or huge "amounts" can show up due to false matches. This is why, in addition to a careful callback, the library imposes a large-but-sane max output amount (`$MONERO_SCANNER_SAFE_XMR_AMOUNT`) as a final line of safety (see `Class_MoneroScanner.php` lines 242–247).
+> If your `$callback` yields `true` for an unrelated key, misleading outputs may be shown (including outputs with huge or blank amounts). It is essential your callback is accurate. As a last line of defense, a maximum output amount is enforced by the library, but you should review [Safety: Callback Reliability and Output Amount Limit](#safety-callback-reliability-and-output-amount-limit) for important precautions.
+>
 
 Returns an array like:
 ```php
@@ -242,7 +243,7 @@ $keys = $key_derivation->derive_keys_from_mnemonic($mnemonic);
 // Generate subaddresses (e.g., account 0, 100 first addresses)
 $subaddrs = $key_derivation->generate_subaddresses($mnemonic, 0, 100);
 
-$pubspend_keys = array_column($subaddrs, 'public_spend_key');
+$public_spend_keys = array_column($subaddrs, 'public_spend_key');
 
 // Fast check w/ bloom filter, always fallback to full check for positives
 require_once 'Class_MoneroScanner.php';
@@ -252,19 +253,26 @@ $block = $scanner->get_block_by_height($height, $rpc_url);
 $matches = $scanner->extract_transactions_to_me(
     $block['transactions'],
     $keys['private_view_key'],
-    fn($key) => in_array($key, $pubspend_keys)
+    fn($key) => in_array($key, $public_spend_keys)
 );
 ```
 > **Tip:**  
-> Using a bloom filter? For scale, it’s very fast for negatives, but always double-check any positive match with a true array or DB lookup before treating an output as yours. If in doubt, the built-in safe amount check acts as a strong net against bogus, huge transactions.
+> When using a bloom filter, confirm any matches in a reliable array or database before processing outputs. Remember, see [Safety: Callback Reliability and Output Amount Limit](#safety-callback-reliability-and-output-amount-limit) for the importance of accurate callback results and limits.
 
 ## How It Works
 
 1. **View Tag Filtering:** Each output is tagged (1-byte) with a value predicted by `H("view_tag" || derivation || output_index)`. Non-matches are immediately skipped—this avoids 99.6% of work.
 2. **Key Recovery:** For candidate outputs, the subaddress public spend key is reconstructed from output commitments and your view key.
-3. **Ownership Check:** The recovered spend key is fed to your callback (array search, bloom filter + fallback, DB, etc).  
-   - A false positive callback leads to a bogus output. However, the safe max-amount filter ensures even misclassified outputs don’t pollute your wallet with giant balances.
+3. **Ownership Check:** The recovered spend key is fed to your callback (array search, bloom filter + fallback, DB, etc).
 4. **Amount Decryption:** If you own the output, RingCT amount decryption yields the true XMR received.
+
+**Safety: Callback Reliability and Output Amount Limit**
+
+It is critical that your ownership-check callback (`fn($public_spend_key): bool`) is accurate and only returns `true` for keys you truly own. If it returns `true` for keys you don't own (e.g., due to a bloom filter false positive or overly broad logic), your scan results will include bogus transactions—typically with enormous amounts and invalid destinations. 
+
+**To reduce the risk** from such callback mistakes, the library enforces a configurable maximum output amount (`$GLOBALS['MONERO_SCANNER_SAFE_XMR_AMOUNT']`, default: 9999 XMR). Outputs with an amount above this are automatically excluded from results as a final safeguard. However, **do not rely on this limit as your main defense**: always ensure your callback logic is accurate and confirm any matches via reliable methods (array/DB).
+
+> Even with this output amount filter, you should assume any surprising result is due to an overly-permissive callback, and review your matching process accordingly.
 
 ## Performance
 
@@ -276,7 +284,7 @@ Choose your lookup/callback algorithm according to subaddress count:
 | 10,000       | ~10ms       | ~0.001ms    |
 | 1,000,000    | ~1000ms     | ~0.001ms    |
 
-**Tip:** For large sets, use a bloom filter for fast negatives and always confirm positives in a true array/DB. Even if your callback makes mistakes, outputs above ~100,000 XMR will be omitted by default.
+**Tip:** For large sets, use a bloom filter for fast negatives and always confirm positives in a true array/DB. Even if your callback makes mistakes, outputs above 9999 XMR will be omitted by default.
 
 ## Project Structure
 
@@ -319,6 +327,4 @@ All dependencies live in `lib/`, sourced from [monero-integrations/monerophp](ht
 ## License
 
 MIT
-
-
 
