@@ -266,7 +266,7 @@ $matches = $scanner->extract_transactions_to_me(
 3. **Ownership Check:** The recovered spend key is fed to your callback (array search, bloom filter + fallback, DB, etc).
 4. **Amount Decryption:** If you own the output, RingCT amount decryption yields the true XMR received.
 
-**Safety: Callback Reliability and Output Amount Limit**
+## Safety: Callback Reliability and Output Amount Limit
 
 It is critical that your ownership-check callback (`fn($public_spend_key): bool`) is accurate and only returns `true` for keys you truly own. If it returns `true` for keys you don't own (e.g., due to a bloom filter false positive or overly broad logic), your scan results will include bogus transactions—typically with enormous amounts and invalid destinations. 
 
@@ -327,4 +327,5 @@ All dependencies live in `lib/`, sourced from [monero-integrations/monerophp](ht
 ## License
 
 MIT
+
 
