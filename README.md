@@ -33,7 +33,7 @@ This library operates in two phases:
 Fetch blocks and transactions from a Monero daemon via RPC.
 
 ### 2. Transaction Parsing (Offline)
-All cryptographic logic runs locally and offline. The scanner returns candidate outputs that pass cryptographic pre-filtering, requiring final verification against your authoritative subaddress database (see [Expected False Positives](#cryptographic-filtering)).
+All cryptographic logic runs locally and offline. The scanner returns candidate outputs that pass cryptographic pre-filtering, requiring final verification against your authoritative subaddress database (see [Cryptographic Filtering](#cryptographic-filtering)).
 
 ## Requirements
 
@@ -61,15 +61,15 @@ php Example_MoneroKeyDerivation.php
 require_once 'Class_MoneroScanner.php';
 $scanner = new MoneroScanner('mainnet');
 
-// Step 1: Fetch block data:
-//         You can find public endpoints at xmr.ditatompel.com/remote-nodes.
-//         Using a proxy is recommended. Can also be null.
+// Step 1: Fetch block data
+//         You can find public endpoints at xmr.ditatompel.com/remote-nodes
+//         Using a proxy is recommended. Can also be null
 $block = $scanner->get_block_by_height(1234567, 'http://node.example.com:18081', '127.0.0.1:9050');
 if (isset($block['error'])) die("Error: " . $block['error']);
 
-// Step 2: Extract candidate transactions:
-//         Results are cryptographically filtered (~0.04% false positives - see Expected False Positives section).
-//         To decrypt outputs and amounts, your Private View Key (64-char hex) is needed.
+// Step 2: Extract candidate transactions
+//         Results are cryptographically filtered (~0.04% false positives - see Cryptographic Filtering section)
+//         To decrypt outputs and amounts, your Private View Key (64-char hex) is needed
 $txs = $scanner->extract_transactions_to_me($block['transactions'], '7c0edd...a51277');
 
 // Step 3: Verify and process transactions
@@ -129,7 +129,7 @@ $candidates = $scanner->extract_transactions_to_me(
 );
 ```
 
-Returns candidate outputs that pass cryptographic filtering. Verify each candidate against your authoritative subaddress list to eliminate false positives (see [Expected False Positives](#cryptographic-filtering)).
+Returns candidate outputs that pass cryptographic filtering. Verify each candidate against your authoritative subaddress list to eliminate false positives (see [Cryptographic Filtering](#cryptographic-filtering)).
 
 Returns an array like:
 ```php
@@ -168,7 +168,9 @@ The scanner uses cryptographic pre-filtering to efficiently identify potential m
 **Critical:** Always verify each candidate against your authoritative subaddress list. Do not assume candidates are legitimate without this verification step.
 
 ```php
-if (!is_subaddress_public_spend_key_mine($tx['public_spend_key'])) continue; // Irrelevant transaction
+if (!is_subaddress_public_spend_key_mine($tx['public_spend_key'])) {
+    continue; // Irrelevant transaction
+}
 ```
 
 **Filter Effectiveness:**
