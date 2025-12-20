@@ -33,7 +33,7 @@ This library operates in two phases:
 Fetch blocks and transactions from a Monero daemon via RPC.
 
 ### 2. Transaction Parsing (Offline)
-All cryptographic logic runs locally and offline. The scanner returns candidate outputs that pass cryptographic pre-filtering, requiring final verification against your authoritative subaddress database (see [Expected False Positives](#expected-false-positives)).
+All cryptographic logic runs locally and offline. The scanner returns candidate outputs that pass cryptographic pre-filtering, requiring final verification against your authoritative subaddress database (see [Expected False Positives](#cryptographic-filtering)).
 
 ## Requirements
 
@@ -61,33 +61,27 @@ php Example_MoneroKeyDerivation.php
 require_once 'Class_MoneroScanner.php';
 $scanner = new MoneroScanner('mainnet');
 
-// Specify a Monero daemon RPC endpoint (You can find public endpoints at xmr.ditatompel.com/remote-nodes)
-$rpc_url = 'http://node.example.com:18081';
-$proxy = '127.0.0.1:9050'; // Optional, recommended. Can be null
-
-// Step 1: Fetch block data
-$block = $scanner->get_block_by_height(1234567, $rpc_url, $proxy);
+// Step 1: Fetch block data:
+//         You can find public endpoints at xmr.ditatompel.com/remote-nodes.
+//         Using a proxy is recommended. Can also be null.
+$block = $scanner->get_block_by_height(1234567, 'http://node.example.com:18081', '127.0.0.1:9050');
 if (isset($block['error'])) die("Error: " . $block['error']);
 
-// Step 2: Extract candidate transactions (Cryptographically filtered: [~0.04% false positives](#expected-false-positives))
-$candidates = $scanner->extract_transactions_to_me(
-    $block['transactions'],
-    '7c0edd...a51277' // Your private view key (64-char hex)
-);
+// Step 2: Extract candidate transactions:
+//         Results are cryptographically filtered (~0.04% false positives - see Expected False Positives section).
+//         To decrypt outputs and amounts, your Private View Key (64-char hex) is needed.
+$txs = $scanner->extract_transactions_to_me($block['transactions'], '7c0edd...a51277');
 
-// Step 3: Verify candidates against your authoritative list (database, hash map, etc)
-$verified_matches = [];
-foreach ($candidates as $candidate) {
-    if (is_subaddress_public_spend_key_mine($candidate['public_spend_key']) {
-        $verified_matches[] = $candidate;
+// Step 3: Verify and process transactions
+foreach ($txs as $tx) {
+    // Verify public spend key matches one of your subaddresses key (Important)
+    if (!is_subaddress_public_spend_key_mine($tx['public_spend_key'])) {
+        continue; // Irrelevant transaction
     }
-}
-
-// Display verified results
-foreach ($verified_matches as $output) {
-    echo $output['amount_xmr'] . " XMR received\n";
-    echo "TX: " . $output['tx_hash'] . "\n";
-    echo "Subaddress key: " . $output['public_spend_key'] . "\n";
+    // Process verified transaction here
+    echo "TX Hash: " . $tx['tx_hash'] . "\n";
+    echo "Subaddress Key: " . $tx['public_spend_key'] . "\n";
+    echo "Amount: " . $tx['amount_xmr'] . " XMR\n";
 }
 ```
 
@@ -135,7 +129,7 @@ $candidates = $scanner->extract_transactions_to_me(
 );
 ```
 
-Returns candidate outputs that pass cryptographic filtering. Verify each candidate against your authoritative subaddress list to eliminate false positives (see [Expected False Positives](#expected-false-positives)).
+Returns candidate outputs that pass cryptographic filtering. Verify each candidate against your authoritative subaddress list to eliminate false positives (see [Expected False Positives](#cryptographic-filtering)).
 
 Returns an array like:
 ```php
@@ -159,33 +153,28 @@ Returns an array like:
 
 ## How It Works
 
-The scanner uses cryptographic pre-filtering to efficiently identify potential matches with minimal false positives:
+The scanner uses cryptographic pre-filtering to efficiently identify potential matches:
 
-### Filtering Process
+### Cryptographic Filtering
 
+**Process:**
 1. **View Tag Filtering:** Each output is tagged (1-byte) with a predictable value; 99.6% of irrelevant outputs are discarded immediately using cryptographic view tags.
 2. **Key Recovery:** For remaining candidates, the subaddress public spend key is reconstructed using your view key.
-3. **Amount Decryption:** RingCT amounts are decrypted and checked against safe limits (90% of remaining candidates filtered out).
-4. **Verification Required:** Final candidates must be verified against your authoritative subaddress list.
+3. **Amount Decryption:** RingCT amounts are decrypted and checked against safe limits (90% of remaining candidates filtered out). The safe amount filter rejects outputs with absurdly high amounts that are likely false positives from incorrect RingCT decryption.
+4. **Verification Required:** Final candidates (~0.04% of all outputs) must be verified against your authoritative subaddress list.
 
-### Expected False Positives
-
-Results will contain false positives (~0.04% of candidates) that must be filtered against your authoritative subaddress list.
-
-Approximately **0.04%** of all transaction outputs will be returned as false candidates. These false positives occur because:
-- Random outputs may coincidentally pass view tag verification
-- Amount decryption may succeed for non-owned outputs within safe limits
+**False Positives:** Results will contain false positives that must be filtered against your authoritative subaddress list. Approximately **0.04%** of all transaction outputs pass all filters due to coincidental cryptographic matches.
 
 **Critical:** Always verify each candidate against your authoritative subaddress list. Do not assume candidates are legitimate without this verification step.
 
-`if (!is_subaddress_public_spend_key_mine($tx['public_spend_key')) continue; // Irrelevant transaction`
+```php
+if (!is_subaddress_public_spend_key_mine($tx['public_spend_key'])) continue; // Irrelevant transaction
+```
 
-### Mathematical Analysis
-
-- **View tag filtering efficiency:** 99.6% of outputs discarded
-- **Remaining after view tag filtering:** 100% - 99.6% = 0.4%
+**Filter Effectiveness:**
+- **View tag filtering:** 99.6% of outputs discarded
 - **Safe amount filtering:** 90% of remaining outputs discarded
-- **Final candidate rate:** 100 - 99.6 - ((100 - 99.6) × 0.9) = 100 - 99.6 - (0.4 × 0.9) = 100 - 99.6 - 0.36 = **0.04%**
+- **Final candidate rate:** 0.04% of all transaction outputs
 
 ### Helper Methods
 
@@ -282,3 +271,4 @@ All required libraries are in `lib/`, vendored from [monero-integrations/monerop
 ## License
 
 MIT
+
