@@ -5,16 +5,20 @@ A PHP library for scanning and decrypting Monero blocks/transactions directly in
 ## Components
 
 ### MoneroScanner
-Performs direct Monero blockchain scans, locating outputs that belong to large sets of subaddresses. Handles both RPC data fetching and all local cryptographic parsing.
+Performs direct Monero blockchain scans, locating outputs that belong to large sets of subaddresses.
+
+Handles both RPC data fetching and all local cryptographic parsing (see [How It Works](#how-it-works)).
 
 ### MoneroKeyDerivation
-Wallet key derivation (from mnemonic) and subaddress generation. A wrapper for deriving keys and subaddresses by mnemonic phrase.
+Wallet key derivation (from mnemonic) and subaddress generation.
+
+A wrapper for deriving keys and subaddresses by mnemonic phrase (see [MoneroKeyDerivation API](#monerokeyderivation-api)).
 
 ## Why This Exists
 
 At time of writing, there was no reliable, open-source PHP library capable of fully parsing Monero blocks, extracting all outputs, and efficiently matching them against very large subaddress sets—without depending on wallet RPC or incurring O(block_tx_count × address_count) work. Existing libraries lean on Monero’s wallet RPC, rarely decode blocks directly, and frequently lack modern features such as view tags, scalable subaddress lookup, or full RingCT amount decryption. This project fills that gap for those needing wallet sync, analytics, or auditing at scale.
 
-- **Scalability**: Designed to work with millions of subaddresses, using a callback approach for fast lookup (arrays, databases, etc).
+- **Scalability**: Designed to work with millions of subaddresses through efficient cryptographic pre-filtering.
 - **Modern protocol support**: Subaddresses, view tags, full RingCT parsing.
 - **Privacy**: Keys never leave your environment—no Monero wallet RPC, no remote trust needed.
 - **Script-ready**: Integrates into analytics, auditing, or wallet tooling.
@@ -23,33 +27,13 @@ The key derivation module provides full mnemonic-to-key/subaddress support for w
 
 ## Architecture
 
-This library is two-phase:
+This library operates in two phases:
 
 ### 1. Data Fetching (Online)
 Fetch blocks and transactions from a Monero daemon via RPC.
 
-```php
-$block = $scanner->get_block_by_height(1234567, 'http://node:18081', '127.0.0.1:9050');
-```
-
 ### 2. Transaction Parsing (Offline)
-All cryptographic logic (view tags, key derivation, amount decryption) runs locally and offline.
-- **Fast**: No network latency when scanning.
-- **Private**: View key never leaves your machine.
-- **Flexible**: Supply your own lookup for subaddress sets (array, DB, etc).
-
-```php
-$matches = $scanner->extract_transactions_to_me(
-    $block['transactions'],
-    $private_view_key,
-    function($public_spend_key) {
-        // Return true if the public_spend_key matches one you control.
-        return in_array($public_spend_key, $your_public_spend_keys_array);
-    }
-);
-```
-
-> **Callback accuracy matters:** The callback should accurately report whether a public spend key is controlled by you. Arrays, hash maps, or database-backed lookups are recommended for maximum correctness and **zero** false positives. Probabilistic structures (like bloom filters) are not really needed, as MoneroScanner already heavily pre-filters outputs by cryptographic properties (see ["Safety: Callback Reliability and Output Amount Limit"](#safety-callback-reliability-and-output-amount-limit) for guidance).
+All cryptographic logic runs locally and offline. The scanner returns candidate outputs that pass cryptographic pre-filtering, requiring final verification against your authoritative subaddress database (see [Expected False Positives](#expected-false-positives)).
 
 ## Requirements
 
@@ -75,11 +59,9 @@ php Example_MoneroKeyDerivation.php
 ```php
 <?php
 require_once 'Class_MoneroScanner.php';
-
 $scanner = new MoneroScanner('mainnet');
 
-// Specify a Monero daemon RPC endpoint
-// You can find public endpoints at xmr.ditatompel.com/remote-nodes
+// Specify a Monero daemon RPC endpoint (You can find public endpoints at xmr.ditatompel.com/remote-nodes)
 $rpc_url = 'http://node.example.com:18081';
 $proxy = '127.0.0.1:9050'; // Optional, recommended. Can be null
 
@@ -87,24 +69,22 @@ $proxy = '127.0.0.1:9050'; // Optional, recommended. Can be null
 $block = $scanner->get_block_by_height(1234567, $rpc_url, $proxy);
 if (isset($block['error'])) die("Error: " . $block['error']);
 
-// Step 2: Offline scan for matching outputs
-// Your subaddresses should be supplied as an array/hashmap/database or other authoritative source.
-function is_public_spend_key_mine(string $public_spend_key): bool {
-    return in_array($public_spend_key, [
-        'fc1d250d...5be6ed29',
-        'a6a97a0d...edde4895',
-        // ... your subaddress public spend keys here
-    ]);
-}
-
-$matches = $scanner->extract_transactions_to_me(
+// Step 2: Extract candidate transactions (Cryptographically filtered: [~0.04% false positives](#expected-false-positives))
+$candidates = $scanner->extract_transactions_to_me(
     $block['transactions'],
-    '7c0edd...a51277', // Your private view key (64-char hex)
-    'is_public_spend_key_mine'
+    '7c0edd...a51277' // Your private view key (64-char hex)
 );
 
-// Display results
-foreach ($matches as $output) {
+// Step 3: Verify candidates against your authoritative list (database, hash map, etc)
+$verified_matches = [];
+foreach ($candidates as $candidate) {
+    if (is_subaddress_public_spend_key_mine($candidate['public_spend_key']) {
+        $verified_matches[] = $candidate;
+    }
+}
+
+// Display verified results
+foreach ($verified_matches as $output) {
     echo $output['amount_xmr'] . " XMR received\n";
     echo "TX: " . $output['tx_hash'] . "\n";
     echo "Subaddress key: " . $output['public_spend_key'] . "\n";
@@ -149,12 +129,13 @@ Returns:
 ### Transaction Extraction
 
 ```php
-$matches = $scanner->extract_transactions_to_me(
+$candidates = $scanner->extract_transactions_to_me(
     $transactions,      // From block['transactions']
-    $private_view_key,  // 64-char hex string
-    $callback           // function(string $public_spend_key): bool
+    $private_view_key   // 64-char hex string
 );
 ```
+
+Returns candidate outputs that pass cryptographic filtering. Verify each candidate against your authoritative subaddress list to eliminate false positives (see [Expected False Positives](#expected-false-positives)).
 
 Returns an array like:
 ```php
@@ -176,6 +157,36 @@ Returns an array like:
 ]
 ```
 
+## How It Works
+
+The scanner uses cryptographic pre-filtering to efficiently identify potential matches with minimal false positives:
+
+### Filtering Process
+
+1. **View Tag Filtering:** Each output is tagged (1-byte) with a predictable value; 99.6% of irrelevant outputs are discarded immediately using cryptographic view tags.
+2. **Key Recovery:** For remaining candidates, the subaddress public spend key is reconstructed using your view key.
+3. **Amount Decryption:** RingCT amounts are decrypted and checked against safe limits (90% of remaining candidates filtered out).
+4. **Verification Required:** Final candidates must be verified against your authoritative subaddress list.
+
+### Expected False Positives
+
+Results will contain false positives (~0.04% of candidates) that must be filtered against your authoritative subaddress list.
+
+Approximately **0.04%** of all transaction outputs will be returned as false candidates. These false positives occur because:
+- Random outputs may coincidentally pass view tag verification
+- Amount decryption may succeed for non-owned outputs within safe limits
+
+**Critical:** Always verify each candidate against your authoritative subaddress list. Do not assume candidates are legitimate without this verification step.
+
+`if (!is_subaddress_public_spend_key_mine($tx['public_spend_key')) continue; // Irrelevant transaction`
+
+### Mathematical Analysis
+
+- **View tag filtering efficiency:** 99.6% of outputs discarded
+- **Remaining after view tag filtering:** 100% - 99.6% = 0.4%
+- **Safe amount filtering:** 90% of remaining outputs discarded
+- **Final candidate rate:** 100 - 99.6 - ((100 - 99.6) × 0.9) = 100 - 99.6 - (0.4 × 0.9) = 100 - 99.6 - 0.36 = **0.04%**
+
 ### Helper Methods
 
 All cryptographic methods are public:
@@ -185,10 +196,11 @@ $scanner->check_view_tag($derivation, $output_index, $view_tag);
 $scanner->recover_public_spend_key($derivation, $output_index, $output_key);
 $scanner->decrypt_amount($derivation, $output_index, $encrypted_amount);
 $scanner->parse_additional_pubkeys($extra_hex);
-$scanner->set_batch_size(100); // For RPC transaction fetch batching
 ```
 
 ## MoneroKeyDerivation API
+
+Helper (wrapper) class for easily generating/deriving keys and subaddresses from mnemonic phrase
 
 ### Key Derivation from Mnemonic
 
@@ -229,63 +241,11 @@ Returns:
 ]
 ```
 
-### Integration: Fast Scanning
-
-```php
-// Derive keys from mnemonic
-$keys = $key_derivation->derive_keys_from_mnemonic($mnemonic);
-
-// Generate 100 subaddresses (e.g., major index 0, minor index 0-99)
-$subaddrs = $key_derivation->generate_subaddresses($mnemonic, 0, 0, 100);
-
-// Collect the public spend keys in your preferred authoritative structure
-$public_spend_keys = array_column($subaddrs, 'public_spend_key');
-
-// Get a block
-require_once 'Class_MoneroScanner.php';
-$scanner = new MoneroScanner();
-$block = $scanner->get_block_by_height($height, $rpc_url);
-
-// Extract relevant transactions
-$matches = $scanner->extract_transactions_to_me(
-    $block['transactions'],
-    $keys['private_view_key'],
-    function(string $public_spend_key) use ($public_spend_keys) {
-        return in_array($public_spend_key, $public_spend_keys);
-    }
-);
-```
-
-## How It Works
-
-1. **View Tag Filtering:** Each output is tagged (1-byte) with a predictable value; almost all non-matches are skipped up front.
-2. **Key Recovery:** For candidate outputs, the subaddress public spend key is reconstructed using your view key.
-3. **Ownership Check:** The reconstructed key is passed to your callback, which determines if the output belongs to you.
-4. **Amount Decryption:** If owned, the RingCT amount is decrypted, and the transaction will be in the return results.
-
-## Safety: Callback Reliability and Output Amount Limit
-
-### About False Positives
-
-**Important:**  
-The scanner never knows or stores your subaddresses. It depends on your callback to determine ownership, so results are only as reliable as the data behind your callback.
-
-1. The **View Tag** is used to pre filter out most irrelevant tx outputs (99.6% filtered out)
-2. The **Callback** is called and if it returns true, the process continues (+ 0-100% filtered-out)
-3. The **Safe Amount** is used to reject outputs with absurd amounts (since amount decryption fails + 90% filtered-out)
-4. Transactions that survive all this filtering will be returned.
-
-- If your callback is precise (accurate array/database/lookup), results will be reliable with no false positives.
-- Approximate/probabilistic checks (like bloom filters) will **rarely (but not never)** deliver a false positive.
-- Returning always true will result in ~1 false positive per ~100 transactions, before getting further filtered by output amount limit `safe amount` (`$GLOBALS['MONERO_SCANNER_SAFE_XMR_AMOUNT']`, default: 9999 XMR), as most ciphertexts cannot be validly decrypted with your keys.
-
-**TODO:** I will be switching step 2 with step 3, so that the callback will be called last. Database lookups are more expensive than amount decryption.
-
 ## Project Structure
 
 ```
 monero-scanner/
-├── Class_MoneroScanner.php        # Blockchain scanning (see extract_transactions_to_me for callback/amount limit safety)
+├── Class_MoneroScanner.php        # Blockchain scanning with cryptographic pre-filtering
 ├── Class_MoneroKeyDerivation.php  # Key derivation, address/subaddress creation
 ├── Example_MoneroScanner.php      # MoneroScanner usage
 ├── Example_MoneroKeyDerivation.php # MoneroKeyDerivation usage
@@ -322,11 +282,3 @@ All required libraries are in `lib/`, vendored from [monero-integrations/monerop
 ## License
 
 MIT
-
-
-
-
-
-
-
-
