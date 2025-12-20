@@ -1,79 +1,42 @@
 <?php
-/**
- * Example usage of MoneroScanner class
- */
+
+// Example usage of MoneroScanner class
 require_once 'Class_MoneroScanner.php';
-
-// Sample config
-$rpc_url = 'http://node.xmr.rocks:18089';
-$socks5_proxy = '127.0.0.1:9050'; // Can be null
-$private_view_key = '740b68ac...3eb108ad'; //   <---- Your wallet's private view key (64 chars)
-
-// Define which blocks to scan
-$block_heights = [1234567]; //                  <---- Replace with real block heights
-
-// Define a callback that checks if a public spend key belongs to your wallet
-// This mimics a bloom filter (or a database lookup): You just need to return true/false
-function is_my_subaddress(string $public_spend_key): bool {
-    // Minimal example: Array membership check
-    $my_public_spend_keys = [
-        '5a3ab96c...7f6130e6', //               <---- Subaddress public spend key (64 chars)
-        '0b46e7d1...18e05d2b', //               <---- Another subaddress public spend key
-    ];
-    return in_array($public_spend_key, $my_public_spend_keys, true);
-};
-
-// Initialize scanner
 $scanner = new MoneroScanner('mainnet');
 
-echo "=== Monero Block Scanner PHP (Example) ===\n\n";
-$all_matches = [];
-foreach ($block_heights as $height) {
-    echo "Fetching block $height...\n";
-    
-    // Fetch the block with all transactions
-    $block = $scanner->get_block_by_height($height, $rpc_url, $socks5_proxy);
-    if (isset($block['error'])) {
-        echo "  ERROR: " . $block['error'] . "\n";
-        continue;
-    }
-    echo "  Hash: " . $block['hash'] . "\n";
-    echo "  Transactions: " . $block['tx_count'] . "\n";
-    
-    // Extract transactions belonging to us
-    $matches = $scanner->extract_transactions_to_me($block['transactions'], $private_view_key, 'is_my_subaddress');
+// Step 1: Fetch block data
+$rpc_url = 'http://node.example.com:18081'; // <-- Replace with your node rpc url
+$socks5_proxy = '127.0.0.1:9050'; // <-- It is recommended to use a proxy. Can also be null
+$block = $scanner->get_block_by_height(1234567, $rpc_url, $socks5_proxy);
+echo "Fetching block...\n";
+if (isset($block['error'])) exit("Error: " . $block['error']);
+echo "Block hash: {$block['hash']} TX count: {$block['tx_count']} Timestamp: {$block['timestamp']}\n";
 
-    // Display block results (brief)
-    if (count($matches) > 0) {
-        echo "  Found " . count($matches) . " output(s) to our wallet!\n";
-        foreach ($matches as $match) {
-            $match['block_height'] = $height;
-            $all_matches[] = $match;
-        }
-    } else {
-        echo "  No matches.\n";
+// Step 2: Extract candidate transactions
+echo "Extracting candidate transactions...\n";
+$my_private_view_key = '7c0edd...a51277'; // <-- Replace with your private view key (64 characters hex)
+$txs = $scanner->extract_transactions_to_me($block['transactions'], $my_private_view_key);
+
+// Step 3: Verify and process transactions
+foreach ($txs as $tx) {
+
+    // Verify public spend key matches one of your subaddresses key (Important)
+    if (!is_my_subaddress($tx['public_spend_key'])) {
+        echo "Transaction verification failed.\n";
+        continue; // Irrelevant transaction
     }
-    echo "\n";
+
+    // Process verified transaction here
+    echo "Transaction verified:\n";
+    var_dump($tx);
+
 }
 
-// Display final results
-echo "=== RESULTS ===\n\n";
-if (count($all_matches) > 0) {
-    $total = '0';
-    foreach ($all_matches as $idx => $output) {
-        echo "Output " . ($idx + 1) . ":\n";
-        echo "  Block:      " . $output['block_height'] . "\n";
-        echo "  TX Hash:    " . $output['tx_hash'] . "\n";
-        echo "  Index:      " . $output['output_index'] . "\n";
-        echo "  Spend Key:  " . $output['public_spend_key'] . "\n";
-        echo "  Amount:     " . $output['amount_xmr'] . " XMR\n";
-        echo "  TX Version: " . $output['tx_version'] . "\n";
-        echo "  Unlock Time:" . $output['unlock_time'] . "\n";
-        echo "  RingCT Type:" . $output['rct_type'] . "\n";
-        echo "  Coinbase:   " . ($output['is_coinbase'] ? 'Yes' : 'No') . "\n\n";
-        $total = bcadd($total, $output['amount_xmr'], 12);
-    }
-    echo "TOTAL: $total XMR\n";
-} else {
-    echo "No transactions found.\n";
+// A function that checks whether a public spend key belongs to one of your subaddresses
+function is_my_subaddress(string $public_spend_key): bool {
+    static $my_public_spend_keys = [
+        'a6b40c57...ef59023a', // <-- Replace with your public spend keys (64 characters hex)
+        'e490fac1...9ed468a0', // <-- Replace with your public spend keys (64 characters hex)
+    ];
+    return in_array($public_spend_key, $my_public_spend_keys);
 }
