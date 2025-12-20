@@ -89,43 +89,48 @@ class MoneroScanner
     }
 
     /**
-     * Extract transactions that belong to the wallet
-     * 
+     * Extract transactions that potentially belong to the wallet
+     *
+     * Returns all outputs that pass view tag filtering and safe amount limits.
+     * Results may contain false positives (~0.04%) that must be verified against your
+     * authoritative subaddress list.
+     *
      * @param array $transactions Array of transaction data objects
      * @param string $private_view_key The wallet's private view key (64 hex chars)
-     * @param callable $pubspend_callback Callback that takes a public spend key (string) and returns bool
-     * @return array Array of matching outputs with amounts and metadata
+     * @return array Array of candidate outputs with amounts and metadata
      */
-    public function extract_transactions_to_me(array $transactions, string $private_view_key, callable $pubspend_callback): array
+    public function extract_transactions_to_me(array $transactions, string $private_view_key): array
     {
-        $matching_outputs = [];
+        $candidate_outputs = [];
         foreach ($transactions as $tx) {
-         
+
             // Get required info from the $tx array
             $tx_hash = $tx['hash'] ?? '';
             $tx_data = $tx['data'] ?? null;
             if (!$tx_data || !$tx_hash) continue;
-         
+
             // Process the $tx
-            $outputs = $this->process_transaction($tx_data, $tx_hash, $private_view_key, $pubspend_callback);
+            $outputs = $this->process_transaction($tx_data, $tx_hash, $private_view_key);
             foreach ($outputs as $output) {
-                $matching_outputs[] = $output; // Add any reported outputs in the return array
+                $candidate_outputs[] = $output; // Add any candidate outputs in the return array
             }
-         
+
         }
-        return $matching_outputs;
+        return $candidate_outputs;
     }
 
     /**
-     * Process a single transaction and find matching outputs
-     * 
+     * Process a single transaction and find candidate outputs
+     *
+     * Returns all outputs that pass view tag filtering and safe amount limits.
+     * Results may contain false positives that must be verified against your subaddress list.
+     *
      * @param object $tx_data Decoded transaction JSON object
      * @param string $tx_hash Transaction hash
      * @param string $private_view_key Private view key
-     * @param callable $pubspend_callback Callback to check if spend key belongs to wallet
-     * @return array Array of matching outputs
+     * @return array Array of candidate outputs
      */
-    public function process_transaction(object $tx_data, string $tx_hash, string $private_view_key, callable $pubspend_callback): array
+    public function process_transaction(object $tx_data, string $tx_hash, string $private_view_key): array
     {
         if (!isset($tx_data->extra) || !is_array($tx_data->extra)) return [];
         
@@ -177,28 +182,22 @@ class MoneroScanner
             // Filter out 99.6% of irrelevant outputs: Makes a bloom filter unneeded. Good job monero!
             if (!$view_tag_matches) continue;
             
-            // View tag matched - recover the subaddress public spend key from the output
-            $recovered_spend_key = $this->recover_public_spend_key($derivation, $output_index, $output_key);
-            
-            // Ask the callback if this spend key belongs to our wallet
-            if (!$pubspend_callback($recovered_spend_key)) continue;
-            
-            // This output belongs to us - decrypt the amount
+            // This output (likely) belongs to us - decrypt the amount
             $encrypted_amount = $tx_data->rct_signatures->ecdhInfo[$output_index]->amount ?? null;
-            
+
             // Skip if there is no amount
             if (!$encrypted_amount) continue;
-            
+         
+            // Skip if amount is greater than the "safe amount"
+            // You can change this global to another amount to allow such huge transactions.   
+            $safe_amount = $GLOBALS['MONERO_SCANNER_SAFE_XMR_AMOUNT'] ?? 9999; // In XMR
+            if ($amount_data['xmr'] > $safe_amount) continue; // Skip huge amount (Amount decryption probably failed)
+
             // Determine amount in XMR & piconero
             $amount_data = $this->decrypt_amount($derivation, $output_index, $encrypted_amount);
-
-            // Determine the safe amount
-            //   You can change this global to another amount to allow such huge transactions.
-            //   If your callback is not probabilistic, you can even use PHP_INT_MAX (not recommended).
-            $safe_amount = $GLOBALS['MONERO_SCANNER_SAFE_XMR_AMOUNT'] ?? 9999; // In XMR
-         
-            // Skip if xmr amount is greater than the safe amount (most probably a false positive from a probabilistic callback)
-            if ($amount_data['xmr'] > $safe_amount) continue; // Skip huge amount
+            
+            // Recover the subaddress public spend key from the output
+            $recovered_spend_key = $this->recover_public_spend_key($derivation, $output_index, $output_key);
 
             // Extract additional transaction metadata
             $tx_version = $tx_data->version ?? null;
@@ -210,8 +209,7 @@ class MoneroScanner
             $have_rct_type = (isset($tx_data->rct_signatures) && isset($tx_data->rct_signatures->type));
             $rct_type = $have_rct_type ? $tx_data->rct_signatures->type : null;
 
-            // Calculate fee if possible (simplified: sum outputs - sum inputs for coinbase, or 0 for regular tx)
-            $fee = null;
+            // Sum outputs - sum inputs for coinbase, or 0 for regular tx
             if ($input_count === 1 && isset($tx_data->vin[0]->gen)) {
                 // Coinbase transaction - fee is difference between block reward and outputs
                 $total_outputs = 0;
@@ -559,5 +557,4 @@ class MoneroScanner
         ];
     }
 }
-
 
