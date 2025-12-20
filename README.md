@@ -128,9 +128,9 @@ $candidates = $scanner->extract_transactions_to_me(
     $private_view_key   // 64-char hex string
 );
 ```
-Returns candidate outputs that pass cryptographic filtering. 
 
-Returns an array like:
+Returns candidate outputs that pass cryptographic filtering. Results are like:
+
 ```php
 [
     'tx_hash' => '...'           // 64-char hex string
@@ -276,6 +276,7 @@ All required libraries are in `lib/`, vendored from [monero-integrations/monerop
 ## License
 
 MIT
+
 
 
 
