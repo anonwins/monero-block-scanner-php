@@ -5,12 +5,12 @@
  * Provides methods to fetch blocks and identify transactions sent to specific subaddresses.
 */
 
-// Required libraries (Some are modified for PHP 8+ compatibility)
-require_once __DIR__ . '/lib/Cryptonote.php'; // https://github.com/monero-integrations/monerophp/blob/master/src/Cryptonote.php
-require_once __DIR__ . '/lib/ed25519.php';    // https://github.com/monero-integrations/monerophp/blob/master/src/ed25519.php
-require_once __DIR__ . '/lib/base58.php';     // https://github.com/monero-integrations/monerophp/blob/master/src/base58.php
-require_once __DIR__ . '/lib/Varint.php';     // https://github.com/monero-integrations/monerophp/blob/master/src/Varint.php
-require_once __DIR__ . '/lib/Keccak.php';     // https://github.com/kornrunner/php-keccak
+// Load required libraries if not already loaded
+if (!class_exists('\MoneroIntegrations\MoneroPhp\Cryptonote')) require_once __DIR__ . '/lib/Cryptonote.php';
+if (!class_exists('\MoneroIntegrations\MoneroPhp\Varint')) require_once __DIR__ . '/lib/Varint.php';
+if (!class_exists('\MoneroIntegrations\MoneroPhp\ed25519')) require_once __DIR__ . '/lib/ed25519.php';
+if (!class_exists('\MoneroIntegrations\MoneroPhp\base58')) require_once __DIR__ . '/lib/base58.php';
+if (!class_exists('\kornrunner\Keccak')) require_once __DIR__ . '/lib/Keccak.php';
 
 class MoneroScanner {
 
