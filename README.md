@@ -131,6 +131,8 @@ $candidates = $scanner->extract_transactions_to_me(
 
 Returns candidate outputs that pass cryptographic filtering. Verify each candidate against your authoritative subaddress list to eliminate false positives (see [Cryptographic Filtering](#cryptographic-filtering)).
 
+**Note:** Monero supports multiple outputs: Therefore, multiple outputs from the same transaction can appear as separate entries, each with the same `tx_hash` but different `output_index` values. This occurs when multiple outputs in a transaction pass the cryptographic filters.
+
 Returns an array like:
 ```php
 [
@@ -159,8 +161,8 @@ The scanner uses cryptographic pre-filtering to efficiently identify potential m
 
 **Process:**
 1. **View Tag Filtering:** Each output is tagged (1-byte) with a predictable value; 99.6% of irrelevant outputs are discarded immediately using cryptographic view tags.
-2. **Key Recovery:** For remaining candidates, the subaddress public spend key is reconstructed using your view key.
-3. **Amount Decryption:** RingCT amounts are decrypted and checked against safe limits (90% of remaining candidates filtered out). The safe amount filter rejects outputs with absurdly high amounts that are likely false positives from incorrect RingCT decryption.
+2. **Amount Decryption:** RingCT amounts are decrypted and checked against safe limits (90% of remaining candidates filtered out). The safe amount filter rejects outputs with absurdly high amounts that are likely false positives from incorrect RingCT decryption.
+3. **Key Recovery:** For remaining candidates, the subaddress public spend key is reconstructed using your view key.
 4. **Verification Required:** Final candidates (~0.04% of all outputs) must be verified against your authoritative subaddress list.
 
 **False Positives:** Results will contain false positives that must be filtered against your authoritative subaddress list. Approximately **0.04%** of all transaction outputs pass all filters due to coincidental cryptographic matches.
