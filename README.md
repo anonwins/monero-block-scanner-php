@@ -128,10 +128,7 @@ $candidates = $scanner->extract_transactions_to_me(
     $private_view_key   // 64-char hex string
 );
 ```
-
-Returns candidate outputs that pass cryptographic filtering. Verify each candidate against your authoritative subaddress list to eliminate false positives (see [Cryptographic Filtering](#cryptographic-filtering)).
-
-**Note:** Monero supports multiple outputs: Therefore, multiple outputs from the same transaction can appear as separate entries, each with the same `tx_hash` but different `output_index` values. This occurs when multiple outputs in a transaction pass the cryptographic filters.
+Returns candidate outputs that pass cryptographic filtering. 
 
 Returns an array like:
 ```php
@@ -152,6 +149,10 @@ Returns an array like:
     'is_coinbase' => false,
 ]
 ```
+
+**Note:** Verify each candidate against your authoritative subaddress list to eliminate false positives (see [Cryptographic Filtering](#cryptographic-filtering)).
+
+**Note:** Monero supports multiple outputs: Therefore, multiple outputs from the same transaction can appear as separate entries, each with the same `tx_hash` but different `output_index` values. This occurs when multiple outputs in a transaction pass the cryptographic filters.
 
 ## How It Works
 
@@ -275,4 +276,5 @@ All required libraries are in `lib/`, vendored from [monero-integrations/monerop
 ## License
 
 MIT
+
 
