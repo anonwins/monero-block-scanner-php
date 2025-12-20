@@ -150,7 +150,7 @@ Returns an array like:
 ]
 ```
 
-**Note:** Verify each candidate against your authoritative subaddress list to eliminate false positives (see [Cryptographic Filtering](#cryptographic-filtering)).
+**Important:** Verify each candidate against your authoritative subaddress list to eliminate false positives (see [Cryptographic Filtering](#cryptographic-filtering)).
 
 **Note:** Monero supports multiple outputs: Therefore, multiple outputs from the same transaction can appear as separate entries, each with the same `tx_hash` but different `output_index` values. This occurs when multiple outputs in a transaction pass the cryptographic filters.
 
@@ -276,5 +276,6 @@ All required libraries are in `lib/`, vendored from [monero-integrations/monerop
 ## License
 
 MIT
+
 
 
