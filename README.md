@@ -75,7 +75,7 @@ $txs = $scanner->extract_transactions_to_me($block['transactions'], '7c0edd...a5
 // Step 3: Verify and process transactions
 foreach ($txs as $tx) {
     // Verify public spend key matches one of your subaddresses key (Important)
-    if (!is_subaddress_public_spend_key_mine($tx['public_spend_key'])) {
+    if (!is_my_subaddress($tx['public_spend_key'])) {
         continue; // Irrelevant transaction
     }
     // Process verified transaction here
@@ -171,7 +171,7 @@ The scanner uses cryptographic pre-filtering to efficiently identify potential m
 **Critical:** Always verify each candidate against your authoritative subaddress list. Do not assume candidates are legitimate without this verification step.
 
 ```php
-if (!is_subaddress_public_spend_key_mine($tx['public_spend_key'])) {
+if (!is_my_subaddress($tx['public_spend_key'])) {
     continue; // Irrelevant transaction
 }
 ```
@@ -276,6 +276,7 @@ All required libraries are in `lib/`, vendored from [monero-integrations/monerop
 ## License
 
 MIT
+
 
 
 
